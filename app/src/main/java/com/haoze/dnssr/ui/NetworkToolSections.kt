@@ -611,7 +611,7 @@ private fun TraceHopRow(
             ) {
                 if (responded) {
                     Text(
-                        text = hop.address ?: "",
+                        text = hop.address,
                         style = MaterialTheme.typography.bodyMedium,
                         fontFamily = FontFamily.Monospace,
                         color = accentColor

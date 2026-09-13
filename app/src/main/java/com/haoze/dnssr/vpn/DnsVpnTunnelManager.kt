@@ -116,7 +116,7 @@ class DnsVpnTunnelManager {
                 if (!hasGlobalIpv6) return@any false
 
                 val hasIpv6Route = lp.routes.any { route ->
-                    val destAddr = route.destination?.address
+                    val destAddr = route.destination.address
                     (destAddr is Inet6Address && route.isDefaultRoute) ||
                         (destAddr is Inet6Address && route.hasGateway())
                 }

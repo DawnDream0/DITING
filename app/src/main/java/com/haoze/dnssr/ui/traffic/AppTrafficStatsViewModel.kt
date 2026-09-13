@@ -195,7 +195,6 @@ class AppTrafficStatsViewModel(application: Application) : AndroidViewModel(appl
                 TrafficTimeRange.ALL_HISTORY -> {
                     db.appTrafficDao().queryAllHistory()
                 }
-                else -> emptyList()
             }
 
             historicalItems = items

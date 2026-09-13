@@ -92,7 +92,7 @@ object FloatingLogTheme {
                 headerButtonBg = 0x1AFFFFFF,
                 headerButtonTint = 0xFFDCE2EC.toInt(),
                 dividerColor = 0x1FFFFFFF,
-                cardBg = 0x3D2F3A4A.toInt(),
+                cardBg = 0x3D2F3A4A,
                 cardBorder = 0x26FFFFFF,
                 cardTitleColor = 0xFFF0F3F8.toInt(),
                 cardSubtitleColor = 0xFF9AA0A6.toInt(),
