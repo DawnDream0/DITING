@@ -118,9 +118,10 @@ class DnsVpnTunnelManager {
                 val hasIpv6Route = lp.routes.any { route ->
                     val destAddr = route.destination.address
                     (destAddr is Inet6Address && route.isDefaultRoute) ||
-                        (destAddr is Inet6Address && route.hasGateway())
+                        (destAddr is Inet6Address && route.hasGateway()) ||
+                        (destAddr is Inet6Address && route.destination.prefixLength == 0)
                 }
-                hasIpv6Route
+                hasIpv6Route || hasGlobalIpv6
             }
         }.getOrDefault(false)
     }
@@ -138,7 +139,7 @@ class DnsVpnTunnelManager {
         val enableIpv6 = when (ipv6Mode) {
             Ipv6Mode.ENABLED -> true
             Ipv6Mode.DISABLED -> false
-            Ipv6Mode.AUTO -> hasPhysicalIpv6Support(vpnService)
+            Ipv6Mode.AUTO -> true // Always enable IPv6 on the virtual interface to capture IPv6 DNS and prevent leaks
         }
         Log.i(TAG, "establishVpnInterface: ipv6Mode=$ipv6Mode, enableIpv6=$enableIpv6, bypassLan=$bypassLan")
 
@@ -163,6 +164,11 @@ class DnsVpnTunnelManager {
                 } catch (e: Exception) {
                     Log.w(TAG, "addRoute failed for $address/$prefixLength", e)
                 }
+            }
+            try {
+                builder.addRoute(DNS_SERVER_V4, 32)
+            } catch (e: Exception) {
+                Log.w(TAG, "addRoute failed for $DNS_SERVER_V4/32", e)
             }
             if (enableIpv6) {
                 try {

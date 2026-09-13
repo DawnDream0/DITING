@@ -182,30 +182,8 @@ class DnsVpnService : VpnService() {
     }
 
     private fun scheduleIpv6AdaptationCheck(reason: String) {
-        if (tunnelManager.vpnInterface == null) return
-        if (SystemSettingsStore.getIpv6Mode(this) != Ipv6Mode.AUTO) return
-
-        networkChangeDebounceJob?.cancel()
-        networkChangeDebounceJob = serviceScope.launch {
-            delay(1500)
-            if (tunnelManager.vpnInterface == null) return@launch
-            if (SystemSettingsStore.getIpv6Mode(this@DnsVpnService) != Ipv6Mode.AUTO) return@launch
-
-            val physicalIpv6Support = tunnelManager.hasPhysicalIpv6Support(this@DnsVpnService)
-            val currentIpv6Active = tunnelManager.isIpv6Active
-
-            if (physicalIpv6Support != currentIpv6Active) {
-                Log.i(
-                    TAG,
-                    "Dynamic IPv6 adaptation triggered by $reason: physicalIpv6Support=$physicalIpv6Support, currentIpv6Active=$currentIpv6Active. Reconnecting VPN."
-                )
-                refreshMutex.withLock {
-                    if (tunnelManager.vpnInterface != null) {
-                        restartVpnLocked()
-                    }
-                }
-            }
-        }
+        // In AUTO mode, IPv6 is always stably configured on the virtual interface to prevent IPv6 DNS leaks.
+        // Physical network changes do not require disruptive VPN interface reconnections.
     }
 
     internal fun onOutboundProxyStatus(state: String, message: String) {
@@ -516,6 +494,7 @@ class DnsVpnService : VpnService() {
                 runCatching { dbComponents.rewriteRuleManager.refreshCache() }
                     .onSuccess { tunnelManager.goInspectionTunnel?.updateRewriteRules() }
                     .onFailure { Log.w(TAG, "Failed to refresh rewrite rule cache", it) }
+                tunnelManager.goInspectionTunnel?.pushRuleSnapshot()
             }
         }
     }

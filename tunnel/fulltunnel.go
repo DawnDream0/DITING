@@ -259,6 +259,11 @@ func newFullTunnelUdpHandler(engine *Engine, filter *MitmFilter, uidr UIDResolve
 			handleDNSOverUDP(conn, engine, uid)
 			return
 		}
+		// DoQ (DNS over QUIC) on port 853: block to prevent encrypted DNS bypassing local filter.
+		if flow.serverPort == 853 {
+			engine.logBlockedConnection(flow, ProtocolUDP, "blocked_encrypted_dns")
+			return
+		}
 		if !engine.appAllowlistConnectionAllowed(uid, flow.serverIP) {
 			engine.logBlockedConnection(flow, ProtocolUDP, "app_allowlist_blocked")
 			return
@@ -316,6 +321,12 @@ func newFullPassthroughTcpHandler(engine *Engine, uidr UIDResolver, protectFn fu
 		// DNS over TCP (port 53) → answer locally (adblock + resolve).
 		if flow.serverPort == 53 {
 			handleDNSOverTCP(conn, engine, uid)
+			return
+		}
+		// DoT (DNS over TLS) on port 853: block to prevent Android Private DNS
+		// opportunistic probing from switching the entire device away from local port 53.
+		if flow.serverPort == 853 {
+			engine.logBlockedConnection(flow, ProtocolTCP, "blocked_encrypted_dns")
 			return
 		}
 		engine.logConnection(flow, ProtocolTCP)

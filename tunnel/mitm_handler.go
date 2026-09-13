@@ -90,11 +90,13 @@ func newMitmTcpHandler(
 			clientConn = eng.trafficTracker.WrapClientConn(conn, uid)
 		}
 
-		// Resolve UID first. DoT is blocked only for explicitly selected apps
-		// and only when the user enabled the anti-bypass setting.
-		if flow.serverPort == 853 && eng != nil && eng.blockEncryptedDNS.Load() &&
-			uid != UIDUnknown && filter.IsUIDAllowed(uid) {
-			eng.logBlockedConnection(flow, ProtocolTCP, "blocked_encrypted_dns")
+		// DoT (DNS over TLS) on port 853: block unconditionally to prevent
+		// Android Private DNS opportunistic probing from switching the entire
+		// device away from local port 53.
+		if flow.serverPort == 853 {
+			if eng != nil {
+				eng.logBlockedConnection(flow, ProtocolTCP, "blocked_encrypted_dns")
+			}
 			return
 		}
 

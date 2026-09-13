@@ -106,6 +106,21 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		}
 	}
 
+	// Discovery of Designated Resolvers (DDR, RFC 9462):
+	// Return NXDOMAIN for _dns.resolver.arpa queries to prevent clients
+	// (Android 13+, Chrome) from opportunistically upgrading to encrypted
+	// DoH/DoQ endpoints that bypass local VPN DNS filtering.
+	if domain == "_dns.resolver.arpa" || strings.HasSuffix(domain, "._dns.resolver.arpa") {
+		m := new(dns.Msg)
+		m.SetReply(r)
+		m.Rcode = dns.RcodeNameError
+		_ = w.WriteMsg(m)
+		e.totalQueries.Add(1)
+		e.blockedQueries.Add(1)
+		e.notifyLog(domain, true, queryType, time.Since(startTime).Milliseconds(), appName, "", "ddr_blocked", "", false)
+		return
+	}
+
 	// 0. Firewall (App Blocker) Check
 	if e.firewallChecker != nil && appName != "" && appName != "RootProxy" {
 		if e.firewallChecker.ShouldBlock(appName) {
@@ -124,11 +139,26 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 	}
 
 	// 1. Local Go PolicyEngine check (zero JNI, fast path)
-	if e.policyEngine != nil && e.policyEngine.isActive() {
+	if e.policyEngine != nil && e.policyEngine.isActive() && e.policyEngine.hasRules() {
 		blocked, reason := e.policyEngine.evaluate(domain, appName)
 		if blocked {
 			e.standaloneBlock(w, r, reason, appName, startTime)
 			return
+		}
+		if reason == "__ALLOW__" {
+			e.standaloneForward(w, r, appName, startTime, uid)
+			return
+		}
+		// If domain was neither blocked nor explicitly allowed, check legacy checker as safety fallback if present
+		if e.domainChecker != nil {
+			checkRes := e.domainChecker.CheckDomain(domain, appName)
+			if checkRes == "__ALLOW__" {
+				e.standaloneForward(w, r, appName, startTime, uid)
+				return
+			} else if checkRes != "" {
+				e.standaloneBlock(w, r, checkRes, appName, startTime)
+				return
+			}
 		}
 		e.standaloneForward(w, r, appName, startTime, uid)
 		return

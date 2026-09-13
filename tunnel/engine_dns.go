@@ -69,6 +69,14 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 		}
 	}
 
+	// Discovery of Designated Resolvers (DDR, RFC 9462):
+	// Return NXDOMAIN for _dns.resolver.arpa queries to prevent clients
+	// from opportunistically upgrading to encrypted DoH/DoQ endpoints.
+	if domain == "_dns.resolver.arpa" || strings.HasSuffix(domain, "._dns.resolver.arpa") {
+		e.handleBlockedDomain(queryInfo, "ddr_blocked", appName, startTime)
+		return
+	}
+
 	// Firewall check (per-app blocking via Kotlin callback)
 	if e.firewallChecker != nil && appName != "" {
 		if e.firewallChecker.ShouldBlock(appName) {
@@ -87,10 +95,14 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 	}
 
 	// 1. Local Go PolicyEngine check (zero JNI, fast path)
-	if e.policyEngine != nil && e.policyEngine.isActive() {
+	if e.policyEngine != nil && e.policyEngine.isActive() && e.policyEngine.hasRules() {
 		blocked, reason := e.policyEngine.evaluate(domain, appName)
 		if blocked {
 			e.handleBlockedDomain(queryInfo, reason, appName, startTime)
+			return
+		}
+		if reason == "__ALLOW__" {
+			e.handleForward(queryInfo, appName, startTime)
 			return
 		}
 		// PolicyEngine evaluated domain as not blocked: fall through to cache check & forward (0 JNI).
