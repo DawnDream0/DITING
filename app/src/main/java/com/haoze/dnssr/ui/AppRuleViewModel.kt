@@ -7,6 +7,7 @@ import com.haoze.dnssr.data.AppDatabase
 import com.haoze.dnssr.data.entity.AllowRuleEntity
 import com.haoze.dnssr.data.entity.BlockRuleEntity
 import com.haoze.dnssr.data.entity.RuleScope
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.AdGuardRuleParser
 import com.haoze.dnssr.vpn.AllowListManager
 import com.haoze.dnssr.vpn.BlockListManager
@@ -62,14 +63,14 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
 
     fun loadAllowlistData() {
         val context = getApplication<Application>()
-        _isAppAllowlistMasterEnabled.value = AppSettings.isAppAllowlistEnabled(context)
-        _appAllowlistMap.value = AppSettings.getAppAllowlistRuleMap(context)
+        _isAppAllowlistMasterEnabled.value = AppRulesSettingsStore.isAppAllowlistEnabled(context)
+        _appAllowlistMap.value = AppRulesSettingsStore.getAppAllowlistRuleMap(context)
     }
 
     fun setMasterAllowlistEnabled(enabled: Boolean) {
         val context = getApplication<Application>()
         _isAppAllowlistMasterEnabled.value = enabled
-        AppSettings.setAppAllowlistEnabled(context, enabled)
+        AppRulesSettingsStore.setAppAllowlistEnabled(context, enabled)
         RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
     }
 
@@ -110,7 +111,7 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
 
     fun loadRulesForApp(packageName: String) {
         val context = getApplication<Application>()
-        val allowlistDomains = AppSettings.getAppAllowlistDomainsForApp(context, packageName)
+        val allowlistDomains = AppRulesSettingsStore.getAppAllowlistDomainsForApp(context, packageName)
         _selectedAppAllowlistDomains.value = allowlistDomains
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -141,11 +142,11 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
         }
         current.add(parsed)
         _selectedAppAllowlistDomains.value = current
-        AppSettings.setAppAllowlistDomainsForApp(context, app.packageName, current)
+        AppRulesSettingsStore.setAppAllowlistDomainsForApp(context, app.packageName, current)
         // Clean up conflict package lists
-        AppSettings.setBlockedAppPackages(context, AppSettings.getBlockedAppPackages(context) - app.packageName)
-        AppSettings.removeHttpInspectionAppPackages(context, setOf(app.packageName))
-        AppSettings.setExcludedAppPackages(context, AppSettings.getExcludedAppPackages(context) - app.packageName)
+        AppRulesSettingsStore.setBlockedAppPackages(context, AppRulesSettingsStore.getBlockedAppPackages(context) - app.packageName)
+        AppRulesSettingsStore.removeHttpInspectionAppPackages(context, setOf(app.packageName))
+        AppRulesSettingsStore.setExcludedAppPackages(context, AppRulesSettingsStore.getExcludedAppPackages(context) - app.packageName)
         RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
         loadAllowlistData()
         onResult("已添加放行域名: $parsed", true)
@@ -157,7 +158,7 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
         val current = _selectedAppAllowlistDomains.value.toMutableSet()
         current.remove(domain)
         _selectedAppAllowlistDomains.value = current
-        AppSettings.setAppAllowlistDomainsForApp(context, app.packageName, current)
+        AppRulesSettingsStore.setAppAllowlistDomainsForApp(context, app.packageName, current)
         RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)
         loadAllowlistData()
     }
@@ -166,14 +167,14 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
         val app = _selectedApp.value ?: return
         val context = getApplication<Application>()
         _selectedAppAllowlistDomains.value = emptySet()
-        AppSettings.removeAppAllowlistForApp(context, app.packageName)
+        AppRulesSettingsStore.removeAppAllowlistForApp(context, app.packageName)
         RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)
         loadAllowlistData()
     }
 
     fun clearAllAllowlistRules() {
         val context = getApplication<Application>()
-        AppSettings.setAppAllowlistRuleMap(context, emptyMap())
+        AppRulesSettingsStore.setAppAllowlistRuleMap(context, emptyMap())
         _appAllowlistMap.value = emptyMap()
         _selectedAppAllowlistDomains.value = emptySet()
         RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)

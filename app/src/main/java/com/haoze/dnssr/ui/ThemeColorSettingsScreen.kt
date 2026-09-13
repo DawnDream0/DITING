@@ -25,6 +25,7 @@ import com.haoze.dnssr.ui.components.SettingsGroupTitle
 import com.haoze.dnssr.ui.components.SettingsItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import com.haoze.dnssr.ui.theme.ThemeColorStyle
 import com.haoze.dnssr.ui.theme.swatchColor
 import com.haoze.dnssr.vpn.DnsVpnService
@@ -36,8 +37,8 @@ fun ThemeColorSettingsScreen(
     onThemeColorStyleChanged: (ThemeColorStyle) -> Unit
 ) {
     val context = LocalContext.current
-    var selectedStyle by remember { mutableStateOf(AppSettings.getThemeColorStyle(context)) }
-    val darkTheme = when (AppSettings.getAppThemeMode(context)) {
+    var selectedStyle by remember { mutableStateOf(AppearanceSettingsStore.getThemeColorStyle(context)) }
+    val darkTheme = when (AppearanceSettingsStore.getAppThemeMode(context)) {
         AppThemeMode.SYSTEM -> isSystemInDarkTheme()
         AppThemeMode.LIGHT -> false
         AppThemeMode.DARK -> true
@@ -59,7 +60,7 @@ fun ThemeColorSettingsScreen(
                                 subtitle = if (style == ThemeColorStyle.SYSTEM) localizedText("使用系统壁纸的动态取色") else null,
                                 onClick = {
                                     selectedStyle = style
-                                    AppSettings.setThemeColorStyle(context, style)
+                                    AppearanceSettingsStore.setThemeColorStyle(context, style)
                                     DnsVpnService.refreshFloatingLogOverlay(context)
                                     onThemeColorStyleChanged(style)
                                 }

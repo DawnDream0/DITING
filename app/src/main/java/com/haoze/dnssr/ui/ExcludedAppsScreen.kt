@@ -10,11 +10,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import androidx.compose.ui.unit.dp
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 
 @Composable
 fun ExcludedAppsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val initialPackages = remember { AppSettings.getExcludedAppPackages(context) }
+    val initialPackages = remember { AppRulesSettingsStore.getExcludedAppPackages(context) }
     var selectedPackages by remember { mutableStateOf(initialPackages) }
 
     val appListAccess = rememberAppListAccessState { loadInstalledApps(context) }
@@ -38,10 +39,10 @@ fun ExcludedAppsScreen(onBack: () -> Unit) {
     }
 
     fun saveExcludedApps() {
-        AppSettings.setExcludedAppPackages(context, selectedPackages)
-        AppSettings.removeHttpInspectionAppPackages(context, selectedPackages)
-        AppSettings.setBlockedAppPackages(context, AppSettings.getBlockedAppPackages(context) - selectedPackages)
-        AppSettings.setAppAllowlistPackages(context, AppSettings.getAppAllowlistPackages(context) - selectedPackages)
+        AppRulesSettingsStore.setExcludedAppPackages(context, selectedPackages)
+        AppRulesSettingsStore.removeHttpInspectionAppPackages(context, selectedPackages)
+        AppRulesSettingsStore.setBlockedAppPackages(context, AppRulesSettingsStore.getBlockedAppPackages(context) - selectedPackages)
+        AppRulesSettingsStore.setAppAllowlistPackages(context, AppRulesSettingsStore.getAppAllowlistPackages(context) - selectedPackages)
         RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
         val vpnRunning = com.haoze.dnssr.vpn.DnsVpnService.isRunning(context)
         context.showToast(if (vpnRunning) "已保存，DNS VPN 正在重连" else "已保存，下次启动 DNS VPN 时生效")
@@ -54,13 +55,13 @@ fun ExcludedAppsScreen(onBack: () -> Unit) {
         selectedPackages = selectedPackages,
         onSelectedPackagesChange = { selectedPackages = it },
         initialFilter = AppListFilter.entries.firstOrNull {
-            it.name == AppSettings.getExcludedAppsFilter(context)
+            it.name == AppRulesSettingsStore.getExcludedAppsFilter(context)
         } ?: AppListFilter.USER,
         initialSort = AppListSort.entries.firstOrNull {
-            it.name == AppSettings.getExcludedAppsSort(context)
+            it.name == AppRulesSettingsStore.getExcludedAppsSort(context)
         } ?: AppListSort.LABEL_ASC,
-        onFilterChanged = { AppSettings.setExcludedAppsFilter(context, it.name) },
-        onSortChanged = { AppSettings.setExcludedAppsSort(context, it.name) },
+        onFilterChanged = { AppRulesSettingsStore.setExcludedAppsFilter(context, it.name) },
+        onSortChanged = { AppRulesSettingsStore.setExcludedAppsSort(context, it.name) },
         showSelectionActions = true,
         isDirty = selectedPackages != initialPackages,
         onSave = { saveExcludedApps() },

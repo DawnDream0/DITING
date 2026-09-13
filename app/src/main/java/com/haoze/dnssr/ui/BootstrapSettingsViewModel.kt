@@ -3,6 +3,7 @@ package com.haoze.dnssr.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
 import com.haoze.dnssr.vpn.BootstrapHealthEngine
 import com.haoze.dnssr.vpn.BootstrapHealthSnapshot
 import com.haoze.dnssr.vpn.BootstrapHealthStore
@@ -41,8 +42,8 @@ class BootstrapSettingsViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
             BootstrapHealthEngine.flushActive(commit = true)
-            val enabled = AppSettings.isBootstrapEnabled(context)
-            val entries = AppSettings.loadBootstrapIpEntries(context)
+            val enabled = BootstrapDnsSettingsStore.isBootstrapEnabled(context)
+            val entries = BootstrapDnsSettingsStore.loadBootstrapIpEntries(context)
             val health = BootstrapHealthStore.loadAll(context)
             withContext(Dispatchers.Main) {
                 _enabled.value = enabled
@@ -54,7 +55,7 @@ class BootstrapSettingsViewModel(application: Application) : AndroidViewModel(ap
 
     fun setEnabled(enabled: Boolean) {
         val context = getApplication<Application>()
-        AppSettings.setBootstrapEnabled(context, enabled)
+        BootstrapDnsSettingsStore.setBootstrapEnabled(context, enabled)
         RuntimeDnsSettingsRefresher.refreshIfRunning(context, "bootstrap_toggled")
         _enabled.value = enabled
     }
@@ -62,9 +63,9 @@ class BootstrapSettingsViewModel(application: Application) : AndroidViewModel(ap
     fun setEntryEnabled(id: String, enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
-            AppSettings.setBootstrapIpEnabled(context, id, enabled)
+            BootstrapDnsSettingsStore.setBootstrapIpEnabled(context, id, enabled)
             RuntimeDnsSettingsRefresher.refreshIfRunning(context, "bootstrap_ip_toggled")
-            val entries = AppSettings.loadBootstrapIpEntries(context)
+            val entries = BootstrapDnsSettingsStore.loadBootstrapIpEntries(context)
             withContext(Dispatchers.Main) {
                 _entries.value = entries
             }
@@ -72,15 +73,15 @@ class BootstrapSettingsViewModel(application: Application) : AndroidViewModel(ap
     }
 
     fun addCustom(name: String, ip: String): Boolean {
-        if (!AppSettings.isValidBootstrapIp(ip)) {
+        if (!BootstrapDnsSettingsStore.isValidBootstrapIp(ip)) {
             _message.value = getApplication<Application>().getString(R.string.bootstrap_ip_invalid)
             return false
         }
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
-            AppSettings.addCustomBootstrapIp(context, name, ip)
+            BootstrapDnsSettingsStore.addCustomBootstrapIp(context, name, ip)
             RuntimeDnsSettingsRefresher.refreshIfRunning(context, "bootstrap_ip_added")
-            val entries = AppSettings.loadBootstrapIpEntries(context)
+            val entries = BootstrapDnsSettingsStore.loadBootstrapIpEntries(context)
             withContext(Dispatchers.Main) {
                 _entries.value = entries
                 _message.value = context.getString(R.string.bootstrap_ip_added)
@@ -92,10 +93,10 @@ class BootstrapSettingsViewModel(application: Application) : AndroidViewModel(ap
     fun deleteCustom(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
-            AppSettings.deleteCustomBootstrapIp(context, id)
+            BootstrapDnsSettingsStore.deleteCustomBootstrapIp(context, id)
             BootstrapHealthStore.remove(context, id)
             RuntimeDnsSettingsRefresher.refreshIfRunning(context, "bootstrap_ip_deleted")
-            val entries = AppSettings.loadBootstrapIpEntries(context)
+            val entries = BootstrapDnsSettingsStore.loadBootstrapIpEntries(context)
             val health = BootstrapHealthStore.loadAll(context)
             withContext(Dispatchers.Main) {
                 _entries.value = entries

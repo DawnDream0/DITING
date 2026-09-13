@@ -9,10 +9,10 @@ import android.os.ParcelFileDescriptor
 import android.system.OsConstants
 import android.util.Log
 import com.haoze.dnssr.R
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.DnsResolutionMode
 import com.haoze.dnssr.ui.Ipv6Mode
 import com.haoze.dnssr.ui.OutboundProxyConfig
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.cache.DnsCachePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,9 +45,9 @@ class DnsVpnTunnelManager {
         val installed = runBlocking(Dispatchers.IO) {
             runCatching { GoInspectionCaManager.isInstalled(context) }.getOrDefault(false)
         }
-        AppSettings.setHttpsInspectionReady(context, installed)
+        AppRulesSettingsStore.setHttpsInspectionReady(context, installed)
         if (!installed) {
-            AppSettings.setHttpInspectionEnabled(context, false)
+            AppRulesSettingsStore.setHttpInspectionEnabled(context, false)
         }
         return installed
     }
@@ -248,8 +248,8 @@ class DnsVpnTunnelManager {
             bootstrapLogger = dbComponents.bootstrapLogger,
             bootstrapHealthEngine = dbComponents.bootstrapHealthEngine,
             dnsCache = dbComponents.dnsCache,
-            filterHttp3 = AppSettings.isHttp3InspectionEnabled(service),
-            blockEncryptedDns = AppSettings.isEncryptedDnsBlockingEnabled(service),
+            filterHttp3 = AppRulesSettingsStore.isHttp3InspectionEnabled(service),
+            blockEncryptedDns = AppRulesSettingsStore.isEncryptedDnsBlockingEnabled(service),
             outboundProxyConfig = outboundProxyConfig
         )
 

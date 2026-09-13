@@ -40,6 +40,7 @@ import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
 import com.haoze.dnssr.ui.components.SettingsTextItem
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.vpn.DnsVpnService
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -61,9 +62,9 @@ fun LogRetentionSettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    var logRetention by remember { mutableIntStateOf(AppSettings.logRetentionDays(context)) }
-    var logMode by remember { mutableStateOf(AppSettings.getDnsLogMode(context)) }
-    var floatingLogEnabled by remember { mutableStateOf(AppSettings.isFloatingLogEnabled(context)) }
+    var logRetention by remember { mutableIntStateOf(SystemSettingsStore.logRetentionDays(context)) }
+    var logMode by remember { mutableStateOf(SystemSettingsStore.getDnsLogMode(context)) }
+    var floatingLogEnabled by remember { mutableStateOf(SystemSettingsStore.isFloatingLogEnabled(context)) }
     var waitingForOverlayPermission by remember { mutableStateOf(false) }
     var crashLogCount by remember { mutableIntStateOf(CrashLogManager.getCrashLogCount(context)) }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
@@ -100,11 +101,11 @@ fun LogRetentionSettingsScreen(
                 waitingForOverlayPermission = false
                 if (Settings.canDrawOverlays(context)) {
                     floatingLogEnabled = true
-                    AppSettings.setFloatingLogEnabled(context, true)
+                    SystemSettingsStore.setFloatingLogEnabled(context, true)
                     DnsVpnService.refreshFloatingLogOverlay(context)
                 } else {
                     floatingLogEnabled = false
-                    AppSettings.setFloatingLogEnabled(context, false)
+                    SystemSettingsStore.setFloatingLogEnabled(context, false)
                     context.showToast("未授予悬浮窗权限，悬浮窗日志未开启", Toast.LENGTH_SHORT)
                 }
             }
@@ -116,13 +117,13 @@ fun LogRetentionSettingsScreen(
     fun setFloatingLog(enabled: Boolean) {
         if (!enabled) {
             floatingLogEnabled = false
-            AppSettings.setFloatingLogEnabled(context, false)
+            SystemSettingsStore.setFloatingLogEnabled(context, false)
             DnsVpnService.refreshFloatingLogOverlay(context)
             return
         }
         if (Settings.canDrawOverlays(context)) {
             floatingLogEnabled = true
-            AppSettings.setFloatingLogEnabled(context, true)
+            SystemSettingsStore.setFloatingLogEnabled(context, true)
             DnsVpnService.refreshFloatingLogOverlay(context)
         } else {
             waitingForOverlayPermission = true
@@ -166,7 +167,7 @@ fun LogRetentionSettingsScreen(
                             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp),
                             onClick = {
                                 logMode = mode
-                                AppSettings.setDnsLogMode(context, mode)
+                                SystemSettingsStore.setDnsLogMode(context, mode)
                                 onRuntimeDnsSettingsChanged()
                             }
                         )
@@ -197,7 +198,7 @@ fun LogRetentionSettingsScreen(
                             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp),
                             onClick = {
                                 logRetention = days
-                                AppSettings.setLogRetentionDays(context, days)
+                                SystemSettingsStore.setLogRetentionDays(context, days)
                             }
                         )
                     }

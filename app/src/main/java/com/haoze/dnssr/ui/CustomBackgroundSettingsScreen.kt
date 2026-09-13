@@ -47,6 +47,7 @@ import com.haoze.dnssr.ui.components.SettingsItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -57,19 +58,19 @@ fun CustomBackgroundSettingsScreen(
     onBackgroundChanged: () -> Unit
 ) {
     val context = LocalContext.current
-    var enabled by remember { mutableStateOf(AppSettings.isCustomBackgroundEnabled(context)) }
-    var selectedUri by remember { mutableStateOf(AppSettings.getCustomBackgroundUri(context)) }
-    var wallpaperUris by remember { mutableStateOf(AppSettings.getCustomBackgroundUris(context)) }
+    var enabled by remember { mutableStateOf(AppearanceSettingsStore.isCustomBackgroundEnabled(context)) }
+    var selectedUri by remember { mutableStateOf(AppearanceSettingsStore.getCustomBackgroundUri(context)) }
+    var wallpaperUris by remember { mutableStateOf(AppearanceSettingsStore.getCustomBackgroundUris(context)) }
     var pendingDeletionUri by remember { mutableStateOf<String?>(null) }
 
     fun refreshBackgroundState() {
-        enabled = AppSettings.isCustomBackgroundEnabled(context)
-        selectedUri = AppSettings.getCustomBackgroundUri(context)
-        wallpaperUris = AppSettings.getCustomBackgroundUris(context)
+        enabled = AppearanceSettingsStore.isCustomBackgroundEnabled(context)
+        selectedUri = AppearanceSettingsStore.getCustomBackgroundUri(context)
+        wallpaperUris = AppearanceSettingsStore.getCustomBackgroundUris(context)
     }
 
     fun applyBackgroundChange(enabled: Boolean, uri: String?) {
-        AppSettings.setCustomBackground(context, enabled, uri)
+        AppearanceSettingsStore.setCustomBackground(context, enabled, uri)
         refreshBackgroundState()
         onBackgroundChanged()
     }
@@ -79,7 +80,7 @@ fun CustomBackgroundSettingsScreen(
             runCatching {
                 context.contentResolver.takePersistableUriPermission(selected, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            AppSettings.addCustomBackgroundUri(context, selected.toString())
+            AppearanceSettingsStore.addCustomBackgroundUri(context, selected.toString())
             applyBackgroundChange(enabled = true, uri = selected.toString())
         }
     }
@@ -149,7 +150,7 @@ fun CustomBackgroundSettingsScreen(
                 text = { Text(localizedText("确定删除这张已添加的壁纸吗？")) },
                 confirmButton = {
                     TextButton(onClick = {
-                        AppSettings.removeCustomBackgroundUri(context, uri)
+                        AppearanceSettingsStore.removeCustomBackgroundUri(context, uri)
                         pendingDeletionUri = null
                         refreshBackgroundState()
                         onBackgroundChanged()

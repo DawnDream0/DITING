@@ -29,6 +29,7 @@ import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsNavigationItem
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.SubscriptionAutoUpdateSettings
 
 @Composable
@@ -49,21 +50,21 @@ fun RuleControlScreen(
     val subscriptions by db.subscriptionDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val mirrorTemplates by db.mirrorTemplateDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
 
-    var domainRulesEnabled by remember { mutableStateOf(AppSettings.isDomainRulesEnabled(context)) }
-    var addressRulesEnabled by remember { mutableStateOf(AppSettings.isAddressRulesEnabled(context)) }
-    var httpsReady by remember { mutableStateOf(AppSettings.isHttpsInspectionReady(context)) }
-    var httpInspectionEnabled by remember { mutableStateOf(AppSettings.isHttpInspectionEnabled(context)) }
-    var inspectionAppsCount by remember { mutableIntStateOf(AppSettings.getHttpInspectionAppPackages(context).size) }
+    var domainRulesEnabled by remember { mutableStateOf(AppRulesSettingsStore.isDomainRulesEnabled(context)) }
+    var addressRulesEnabled by remember { mutableStateOf(AppRulesSettingsStore.isAddressRulesEnabled(context)) }
+    var httpsReady by remember { mutableStateOf(AppRulesSettingsStore.isHttpsInspectionReady(context)) }
+    var httpInspectionEnabled by remember { mutableStateOf(AppRulesSettingsStore.isHttpInspectionEnabled(context)) }
+    var inspectionAppsCount by remember { mutableIntStateOf(AppRulesSettingsStore.getHttpInspectionAppPackages(context).size) }
     var autoUpdateEnabled by remember { mutableStateOf(SubscriptionAutoUpdateSettings.isEnabled(context)) }
     var intervalHours by remember { mutableIntStateOf(SubscriptionAutoUpdateSettings.intervalHours(context)) }
     var pendingLinkage by remember { mutableStateOf<DomainRulesLinkageKind?>(null) }
 
     fun refreshState() {
-        domainRulesEnabled = AppSettings.isDomainRulesEnabled(context)
-        addressRulesEnabled = AppSettings.isAddressRulesEnabled(context)
-        httpsReady = AppSettings.isHttpsInspectionReady(context)
-        httpInspectionEnabled = AppSettings.isHttpInspectionEnabled(context)
-        inspectionAppsCount = AppSettings.getHttpInspectionAppPackages(context).size
+        domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(context)
+        addressRulesEnabled = AppRulesSettingsStore.isAddressRulesEnabled(context)
+        httpsReady = AppRulesSettingsStore.isHttpsInspectionReady(context)
+        httpInspectionEnabled = AppRulesSettingsStore.isHttpInspectionEnabled(context)
+        inspectionAppsCount = AppRulesSettingsStore.getHttpInspectionAppPackages(context).size
         autoUpdateEnabled = SubscriptionAutoUpdateSettings.isEnabled(context)
         intervalHours = SubscriptionAutoUpdateSettings.intervalHours(context)
     }
@@ -117,7 +118,7 @@ fun RuleControlScreen(
                                         pendingLinkage = DomainRulesLinkageKind.DISABLE_BOTH
                                     } else {
                                         domainRulesEnabled = checked
-                                        AppSettings.setDomainRulesEnabled(context, checked)
+                                        AppRulesSettingsStore.setDomainRulesEnabled(context, checked)
                                         RuntimeDnsSettingsRefresher.refreshIfRunning(context, "domain_rules_switch")
                                         onRuntimeDnsSettingsChanged()
                                     }
@@ -125,7 +126,7 @@ fun RuleControlScreen(
                             )
                         },
                         {
-                            val isAddressOperational = AppSettings.isAddressRulesFullyOperational(context)
+                            val isAddressOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(context)
                             val urlRuleSubtitle = when {
                                 !httpsReady -> "未就绪 · 需先安装并验证 CA 根证书"
                                 !httpInspectionEnabled -> "未就绪 · 需在 HTTPS 流量检查中开启"
@@ -148,7 +149,7 @@ fun RuleControlScreen(
                 SettingsGroupTitle(localizedText("拦截策略"))
             }
             item {
-                val dynamicConfig = AppSettings.getDynamicBlockResponseConfig(context)
+                val dynamicConfig = AppRulesSettingsStore.getDynamicBlockResponseConfig(context)
                 SettingsNavigationGroup(
                     items = listOf(
                         SettingsNavigationItemData(
@@ -156,7 +157,7 @@ fun RuleControlScreen(
                             subtitle = localizedText(if (dynamicConfig.enabled) {
                                 "动态策略：先 NODATA，高频请求后 NXDOMAIN"
                             } else {
-                                localizedText("当前：${localizedText(AppSettings.getBlockResponseMode(context).displayName)}")
+                                localizedText("当前：${localizedText(AppRulesSettingsStore.getBlockResponseMode(context).displayName)}")
                             }),
                             onClick = onNavigateToBlockResponseSettings
                         )
@@ -205,10 +206,10 @@ fun RuleControlScreen(
             onConfirm = {
                 pendingLinkage = null
                 // Coupled disable: HTTPS inspection and domain rules are turned off together, syncing both runtime refreshes
-                AppSettings.setHttpInspectionEnabled(context, false)
+                AppRulesSettingsStore.setHttpInspectionEnabled(context, false)
                 httpInspectionEnabled = false
                 domainRulesEnabled = false
-                AppSettings.setDomainRulesEnabled(context, false)
+                AppRulesSettingsStore.setDomainRulesEnabled(context, false)
                 RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
                 RuntimeDnsSettingsRefresher.refreshIfRunning(context, "domain_rules_switch")
                 onRuntimeDnsSettingsChanged()

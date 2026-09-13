@@ -7,9 +7,9 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.haoze.dnssr.MainActivity
 import com.haoze.dnssr.R
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.DnsResolutionMode
 import com.haoze.dnssr.ui.localizedText
+import com.haoze.dnssr.ui.settings.OutboundProxySettingsStore
 import com.haoze.dnssr.vpn.DnsProvider
 import com.haoze.dnssr.vpn.traffic.TrafficStatsManager
 import java.util.Locale
@@ -30,8 +30,8 @@ object VpnNotificationBuilder {
         activeProviders: List<DnsProvider>,
         activeResolutionMode: DnsResolutionMode
     ): Notification {
-        val proxyConfig = AppSettings.getOutboundProxyConfig(context)
-        val proxyStatus = AppSettings.getOutboundProxyStatus(context)
+        val proxyConfig = OutboundProxySettingsStore.getOutboundProxyConfig(context)
+        val proxyStatus = OutboundProxySettingsStore.getOutboundProxyStatus(context)
 
         // 1. Build the primary status text
         val primaryText = when {

@@ -7,6 +7,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.ui.showToast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -141,21 +143,21 @@ class MainActivity : AppLocalizedActivity() {
         }
         setContent {
             var initialAgreementAccepted by remember {
-                mutableStateOf(AppSettings.isInitialAgreementAccepted(this))
+                mutableStateOf(SystemSettingsStore.isInitialAgreementAccepted(this))
             }
-            var themeMode by remember { mutableStateOf(AppSettings.getAppThemeMode(this)) }
-            var colorStyle by remember { mutableStateOf(AppSettings.getThemeColorStyle(this)) }
-            var backgroundEnabled by remember { mutableStateOf(AppSettings.isCustomBackgroundEnabled(this)) }
-            var backgroundUri by remember { mutableStateOf(AppSettings.getCustomBackgroundUri(this)) }
+            var themeMode by remember { mutableStateOf(AppearanceSettingsStore.getAppThemeMode(this)) }
+            var colorStyle by remember { mutableStateOf(AppearanceSettingsStore.getThemeColorStyle(this)) }
+            var backgroundEnabled by remember { mutableStateOf(AppearanceSettingsStore.isCustomBackgroundEnabled(this)) }
+            var backgroundUri by remember { mutableStateOf(AppearanceSettingsStore.getCustomBackgroundUri(this)) }
             LaunchedEffect(mainThemeRefreshRequested, backgroundRefreshRequested) {
                 if (mainThemeRefreshRequested) {
-                    themeMode = AppSettings.getAppThemeMode(this@MainActivity)
-                    colorStyle = AppSettings.getThemeColorStyle(this@MainActivity)
+                    themeMode = AppearanceSettingsStore.getAppThemeMode(this@MainActivity)
+                    colorStyle = AppearanceSettingsStore.getThemeColorStyle(this@MainActivity)
                     mainThemeRefreshRequested = false
                 }
                 if (backgroundRefreshRequested) {
-                    backgroundEnabled = AppSettings.isCustomBackgroundEnabled(this@MainActivity)
-                    backgroundUri = AppSettings.getCustomBackgroundUri(this@MainActivity)
+                    backgroundEnabled = AppearanceSettingsStore.isCustomBackgroundEnabled(this@MainActivity)
+                    backgroundUri = AppearanceSettingsStore.getCustomBackgroundUri(this@MainActivity)
                     backgroundRefreshRequested = false
                 }
             }
@@ -199,7 +201,7 @@ class MainActivity : AppLocalizedActivity() {
                         } else {
                             InitialAgreementDialog(
                                 onAccept = {
-                                    AppSettings.setInitialAgreementAccepted(this@MainActivity)
+                                    SystemSettingsStore.setInitialAgreementAccepted(this@MainActivity)
                                     initialAgreementAccepted = true
                                     initializeAcceptedExperience()
                                 },
@@ -225,7 +227,7 @@ class MainActivity : AppLocalizedActivity() {
                         }
             }
         }
-        if (AppSettings.isInitialAgreementAccepted(this)) {
+        if (SystemSettingsStore.isInitialAgreementAccepted(this)) {
             initializeAcceptedExperience()
         }
     }
@@ -235,7 +237,7 @@ class MainActivity : AppLocalizedActivity() {
         acceptedExperienceInitialized = true
         AppNotificationChannels.createAllChannels(this)
         SubscriptionAutoUpdateScheduler.sync(this)
-        if (!AppSettings.isStartupUpdateCheckDisabled(this)) {
+        if (!SystemSettingsStore.isStartupUpdateCheckDisabled(this)) {
             appUpdateHost.checkForUpdate(manual = false)
         }
         lifecycleScope.launch {
@@ -262,7 +264,7 @@ class MainActivity : AppLocalizedActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (AppSettings.isInitialAgreementAccepted(this)) {
+        if (SystemSettingsStore.isInitialAgreementAccepted(this)) {
             handleAutoStartIfNeeded(intent)
         }
     }
@@ -293,7 +295,7 @@ class MainActivity : AppLocalizedActivity() {
     }
 
     private fun applyRecentsPrivacySetting() {
-        applyRecentsPrivacy(AppSettings.isHideFromRecentsEnabled(this))
+        applyRecentsPrivacy(SystemSettingsStore.isHideFromRecentsEnabled(this))
     }
 
     private fun applyRecentsPrivacy(hideFromRecents: Boolean) {

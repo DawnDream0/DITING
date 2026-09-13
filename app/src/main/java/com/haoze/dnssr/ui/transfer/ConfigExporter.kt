@@ -6,8 +6,14 @@ import com.haoze.dnssr.data.entity.RewriteTargetType
 import com.haoze.dnssr.data.entity.RuleScope
 import com.haoze.dnssr.notification.NotificationSettingsStore
 import com.haoze.dnssr.ui.AppLanguageManager
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.ConfigExportSelection
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
+import com.haoze.dnssr.ui.settings.DnsCacheSettingsStore
+import com.haoze.dnssr.ui.settings.OutboundProxySettingsStore
+import com.haoze.dnssr.ui.settings.ResolutionSettingsStore
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.vpn.DnsProvider
 import com.haoze.dnssr.vpn.GoUrlRuleManager
 import com.haoze.dnssr.vpn.SubscriptionAutoUpdateSettings
@@ -41,9 +47,9 @@ class ConfigExporter(private val context: Context) {
                 put("protocol", selected.protocol.name)
                 put("isPreset", selected.isPreset)
             })
-            root.put("resolutionMode", AppSettings.getDnsResolutionMode(context).storageValue)
-            root.put("presetDnsService", AppSettings.getPresetDnsService(context).name)
-            root.put("raceTestDomain", AppSettings.getRaceTestDomain(context))
+            root.put("resolutionMode", ResolutionSettingsStore.getDnsResolutionMode(context).storageValue)
+            root.put("presetDnsService", ResolutionSettingsStore.getPresetDnsService(context).name)
+            root.put("raceTestDomain", ResolutionSettingsStore.getRaceTestDomain(context))
 
             val allRuntime = DnsProvider.loadRuntimeProviders(context)
             fun serializeProviderIds(ids: Set<String>): JSONArray = JSONArray().apply {
@@ -59,7 +65,7 @@ class ConfigExporter(private val context: Context) {
                     }
                 }
             }
-            val homeVisibility = AppSettings.getHomeProviderVisibility(context)
+            val homeVisibility = ResolutionSettingsStore.getHomeProviderVisibility(context)
             root.put("homeProviderVisibility", JSONObject().apply {
                 put("visibleProtocols", JSONArray().apply {
                     homeVisibility.visibleProtocols.forEach { put(it.name) }
@@ -67,11 +73,11 @@ class ConfigExporter(private val context: Context) {
                 put("hiddenProviderRefs", serializeProviderIds(homeVisibility.hiddenProviderIds))
                 put("visibleProviderRefs", serializeProviderIds(homeVisibility.visibleProviderIds))
             })
-            root.put("raceProviderRefs", serializeProviderIds(AppSettings.getRaceProviderIds(context)))
-            root.put("smartPredictionProviderRefs", serializeProviderIds(AppSettings.getSmartPredictionProviderIds(context)))
-            root.put("parallelRaceProviderRefs", serializeProviderIds(AppSettings.getParallelRaceProviderIds(context)))
+            root.put("raceProviderRefs", serializeProviderIds(ResolutionSettingsStore.getRaceProviderIds(context)))
+            root.put("smartPredictionProviderRefs", serializeProviderIds(ResolutionSettingsStore.getSmartPredictionProviderIds(context)))
+            root.put("parallelRaceProviderRefs", serializeProviderIds(ResolutionSettingsStore.getParallelRaceProviderIds(context)))
             root.put("primaryBackupProviderRefs", JSONArray().apply {
-                AppSettings.getPrimaryBackupProviderIds(context).forEach { id ->
+                ResolutionSettingsStore.getPrimaryBackupProviderIds(context).forEach { id ->
                     val provider = allRuntime.firstOrNull { it.id == id }
                     if (provider != null) {
                         put(JSONObject().apply {
@@ -83,13 +89,13 @@ class ConfigExporter(private val context: Context) {
                     }
                 }
             })
-            root.put("latencyTestProviderRefs", serializeProviderIds(AppSettings.getLatencyTestProviderIds(context)))
+            root.put("latencyTestProviderRefs", serializeProviderIds(ResolutionSettingsStore.getLatencyTestProviderIds(context)))
         }
 
         if (selection.bootstrapIps) {
-            root.put("bootstrapEnabled", AppSettings.isBootstrapEnabled(context))
+            root.put("bootstrapEnabled", BootstrapDnsSettingsStore.isBootstrapEnabled(context))
             root.put("bootstrapIps", JSONArray().apply {
-                AppSettings.loadBootstrapIpEntries(context).filterNot { it.isPreset }.forEach { entry ->
+                BootstrapDnsSettingsStore.loadBootstrapIpEntries(context).filterNot { it.isPreset }.forEach { entry ->
                     put(JSONObject()
                         .put("name", entry.name)
                         .put("ip", entry.ip)
@@ -97,13 +103,13 @@ class ConfigExporter(private val context: Context) {
                 }
             })
             root.put("bootstrapPresetIds", JSONArray().apply {
-                AppSettings.loadBootstrapIpEntries(context).filter { it.isPreset && it.enabled }.forEach { put(it.id) }
+                BootstrapDnsSettingsStore.loadBootstrapIpEntries(context).filter { it.isPreset && it.enabled }.forEach { put(it.id) }
             })
         }
 
         if (selection.dnsCache) {
-            val cachePolicy = AppSettings.getDnsCachePolicy(context)
-            val cachePreset = AppSettings.getDnsCachePreset(context)
+            val cachePolicy = DnsCacheSettingsStore.getDnsCachePolicy(context)
+            val cachePreset = DnsCacheSettingsStore.getDnsCachePreset(context)
             root.put("dnsCache", JSONObject().apply {
                 put("enabled", cachePolicy.enabled)
                 put("preset", cachePreset.storageValue)
@@ -118,7 +124,7 @@ class ConfigExporter(private val context: Context) {
         }
 
         if (selection.outboundProxy) {
-            val proxyConfig = AppSettings.getOutboundProxyConfig(context)
+            val proxyConfig = OutboundProxySettingsStore.getOutboundProxyConfig(context)
             root.put("outboundProxy", JSONObject().apply {
                 put("enabled", proxyConfig.enabled)
                 put("protocol", proxyConfig.protocol.storageValue)
@@ -131,12 +137,12 @@ class ConfigExporter(private val context: Context) {
         }
 
         if (selection.subscriptions) {
-            root.put("domainRulesEnabled", AppSettings.isDomainRulesEnabled(context))
-            root.put("addressRulesEnabled", AppSettings.isAddressRulesEnabled(context))
-            root.put("encryptedDnsBlockingEnabled", AppSettings.isEncryptedDnsBlockingEnabled(context))
-            root.put("blockResponseMode", AppSettings.getBlockResponseMode(context).storageValue)
+            root.put("domainRulesEnabled", AppRulesSettingsStore.isDomainRulesEnabled(context))
+            root.put("addressRulesEnabled", AppRulesSettingsStore.isAddressRulesEnabled(context))
+            root.put("encryptedDnsBlockingEnabled", AppRulesSettingsStore.isEncryptedDnsBlockingEnabled(context))
+            root.put("blockResponseMode", AppRulesSettingsStore.getBlockResponseMode(context).storageValue)
 
-            val dynConfig = AppSettings.getDynamicBlockResponseConfig(context)
+            val dynConfig = AppRulesSettingsStore.getDynamicBlockResponseConfig(context)
             root.put("dynamicBlockResponse", JSONObject().apply {
                 put("enabled", dynConfig.enabled)
                 put("requestThreshold", dynConfig.requestThreshold)
@@ -144,7 +150,7 @@ class ConfigExporter(private val context: Context) {
                 put("nxDomainDurationSeconds", dynConfig.nxDomainDurationSeconds)
             })
 
-            root.put("allowEditDefaultWhitelist", AppSettings.isAllowEditDefaultWhitelist(context))
+            root.put("allowEditDefaultWhitelist", AppRulesSettingsStore.isAllowEditDefaultWhitelist(context))
 
             root.put("subscriptionAutoUpdate", JSONObject().apply {
                 put("enabled", SubscriptionAutoUpdateSettings.isEnabled(context))
@@ -253,19 +259,19 @@ class ConfigExporter(private val context: Context) {
 
         if (selection.excludedApps) {
             root.put("excludedApps", JSONArray().apply {
-                AppSettings.getExcludedAppPackages(context).forEach(::put)
+                AppRulesSettingsStore.getExcludedAppPackages(context).forEach(::put)
             })
         }
 
         if (selection.blockedApps) {
             root.put("blockedApps", JSONArray().apply {
-                AppSettings.getBlockedAppPackages(context).forEach(::put)
+                AppRulesSettingsStore.getBlockedAppPackages(context).forEach(::put)
             })
-            root.put("blockedAppsEnabled", AppSettings.isBlockedAppsEnabled(context))
+            root.put("blockedAppsEnabled", AppRulesSettingsStore.isBlockedAppsEnabled(context))
         }
 
         if (selection.appAllowlist) {
-            val rules = AppSettings.getAppAllowlistRuleMap(context)
+            val rules = AppRulesSettingsStore.getAppAllowlistRuleMap(context)
             val rulesObj = JSONObject()
             rules.forEach { (pkg, domains) ->
                 val arr = JSONArray()
@@ -273,47 +279,47 @@ class ConfigExporter(private val context: Context) {
                 rulesObj.put(pkg, arr)
             }
             root.put("appAllowlistRules", rulesObj)
-            root.put("appAllowlistEnabled", AppSettings.isAppAllowlistEnabled(context))
+            root.put("appAllowlistEnabled", AppRulesSettingsStore.isAppAllowlistEnabled(context))
         }
 
         if (selection.httpInspection) {
             root.put("httpInspection", JSONObject().apply {
-                put("enabled", AppSettings.isHttpInspectionEnabled(context))
-                put("http3Enabled", AppSettings.isHttp3InspectionEnabled(context))
+                put("enabled", AppRulesSettingsStore.isHttpInspectionEnabled(context))
+                put("http3Enabled", AppRulesSettingsStore.isHttp3InspectionEnabled(context))
                 put("appPackages", JSONArray().apply {
-                    AppSettings.getHttpInspectionAppPackages(context).forEach(::put)
+                    AppRulesSettingsStore.getHttpInspectionAppPackages(context).forEach(::put)
                 })
             })
         }
 
         if (selection.appearance) {
             root.put("appearance", JSONObject().apply {
-                put("appThemeMode", AppSettings.getAppThemeMode(context).storageValue)
-                put("themeColorStyle", AppSettings.getThemeColorStyle(context).storageValue)
-                put("homeComponentOpacity", AppSettings.getHomeComponentOpacity(context))
-                put("homePowerButtonOpacity", AppSettings.getHomePowerButtonOpacity(context))
-                put("homeProviderSelectorOpacity", AppSettings.getHomeProviderSelectorOpacity(context))
-                put("homeModeButtonOpacity", AppSettings.getHomeModeButtonOpacity(context))
-                put("homePoemOpacity", AppSettings.getHomePoemOpacity(context))
-                put("homeDnsDetailOpacity", AppSettings.getHomeDnsDetailOpacity(context))
-                put("homeSentenceRunning", AppSettings.getHomeSentenceRunning(context))
-                put("homeSentenceStopped", AppSettings.getHomeSentenceStopped(context))
+                put("appThemeMode", AppearanceSettingsStore.getAppThemeMode(context).storageValue)
+                put("themeColorStyle", AppearanceSettingsStore.getThemeColorStyle(context).storageValue)
+                put("homeComponentOpacity", AppearanceSettingsStore.getHomeComponentOpacity(context))
+                put("homePowerButtonOpacity", AppearanceSettingsStore.getHomePowerButtonOpacity(context))
+                put("homeProviderSelectorOpacity", AppearanceSettingsStore.getHomeProviderSelectorOpacity(context))
+                put("homeModeButtonOpacity", AppearanceSettingsStore.getHomeModeButtonOpacity(context))
+                put("homePoemOpacity", AppearanceSettingsStore.getHomePoemOpacity(context))
+                put("homeDnsDetailOpacity", AppearanceSettingsStore.getHomeDnsDetailOpacity(context))
+                put("homeSentenceRunning", AppearanceSettingsStore.getHomeSentenceRunning(context))
+                put("homeSentenceStopped", AppearanceSettingsStore.getHomeSentenceStopped(context))
             })
         }
 
         if (selection.systemSettings) {
             root.put("systemSettings", JSONObject().apply {
-                put("bypassLanEnabled", AppSettings.isBypassLanEnabled(context))
-                put("ipv6Mode", AppSettings.getIpv6Mode(context).storageValue)
-                put("hideFromRecentsEnabled", AppSettings.isHideFromRecentsEnabled(context))
-                put("logRetentionDays", AppSettings.logRetentionDays(context))
-                put("dnsLogMode", AppSettings.getDnsLogMode(context).storageValue)
-                put("floatingLogEnabled", AppSettings.isFloatingLogEnabled(context))
-                put("floatingLogPanelSize", AppSettings.getFloatingLogPanelSize(context))
-                put("appTrafficStatsEnabled", AppSettings.isAppTrafficStatsEnabled(context))
-                put("trafficStatsRetentionDays", AppSettings.getTrafficStatsRetentionDays(context))
-                put("trafficStatsHideSystemApps", AppSettings.isTrafficStatsHideSystemApps(context))
-                put("disableStartupUpdateCheck", AppSettings.isStartupUpdateCheckDisabled(context))
+                put("bypassLanEnabled", SystemSettingsStore.isBypassLanEnabled(context))
+                put("ipv6Mode", SystemSettingsStore.getIpv6Mode(context).storageValue)
+                put("hideFromRecentsEnabled", SystemSettingsStore.isHideFromRecentsEnabled(context))
+                put("logRetentionDays", SystemSettingsStore.logRetentionDays(context))
+                put("dnsLogMode", SystemSettingsStore.getDnsLogMode(context).storageValue)
+                put("floatingLogEnabled", SystemSettingsStore.isFloatingLogEnabled(context))
+                put("floatingLogPanelSize", SystemSettingsStore.getFloatingLogPanelSize(context))
+                put("appTrafficStatsEnabled", SystemSettingsStore.isAppTrafficStatsEnabled(context))
+                put("trafficStatsRetentionDays", SystemSettingsStore.getTrafficStatsRetentionDays(context))
+                put("trafficStatsHideSystemApps", SystemSettingsStore.isTrafficStatsHideSystemApps(context))
+                put("disableStartupUpdateCheck", SystemSettingsStore.isStartupUpdateCheckDisabled(context))
                 put("appLanguageMode", AppLanguageManager.getMode(context).storageValue)
                 put("persistentNotificationEnabled", NotificationSettingsStore.isPersistentNotificationEnabled(context))
                 put("trafficSpeedEnabled", NotificationSettingsStore.isTrafficSpeedEnabled(context))

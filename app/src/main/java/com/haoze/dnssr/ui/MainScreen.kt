@@ -32,6 +32,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -88,7 +89,7 @@ fun MainScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val message by viewModel.message.collectAsStateWithLifecycle()
     var showDataResetNotice by remember {
-        mutableStateOf(AppSettings.isDataResetNoticePending(context))
+        mutableStateOf(SystemSettingsStore.isDataResetNoticePending(context))
     }
     val pagerState = rememberPagerState(initialPage = 0) { 2 }
     val coroutineScope = rememberCoroutineScope()
@@ -96,7 +97,7 @@ fun MainScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                showDataResetNotice = AppSettings.isDataResetNoticePending(context)
+                showDataResetNotice = SystemSettingsStore.isDataResetNoticePending(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -152,7 +153,7 @@ fun MainScreen(
                             onNavigateToRaceModeSettings = onNavigateToRaceModeSettings,
                             showDataResetNotice = showDataResetNotice,
                             onDismissDataResetNotice = {
-                                AppSettings.dismissDataResetNotice(context)
+                                SystemSettingsStore.dismissDataResetNotice(context)
                                 showDataResetNotice = false
                             },
                             viewModel = viewModel

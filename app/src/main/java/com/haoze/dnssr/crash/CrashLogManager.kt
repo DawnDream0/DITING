@@ -28,7 +28,6 @@ object CrashLogManager {
     private const val KEY_CONSECUTIVE_CRASH_COUNT = "consecutive_crash_count"
     private const val KEY_HAS_MANUALLY_EXPORTED = "has_manually_exported"
     private const val KEY_LAST_CRASH_TIME = "last_crash_time"
-    private const val KEY_LAST_AUTO_EXPORT_TIME = "last_auto_export_time"
     private const val KEY_PENDING_AUTO_EXPORT_NOTICE = "pending_auto_export_notice"
     private const val KEY_LAST_RECORDED_NATIVE_EXIT_TIME = "last_recorded_native_exit_time"
 
@@ -106,7 +105,6 @@ object CrashLogManager {
                     if (uri != null) {
                         Log.i(TAG, "Auto-saved crash logs to system Download: $fileName")
                         prefs.edit()
-                            .putLong(KEY_LAST_AUTO_EXPORT_TIME, now)
                             .putBoolean(KEY_PENDING_AUTO_EXPORT_NOTICE, true)
                             .commit()
                     }

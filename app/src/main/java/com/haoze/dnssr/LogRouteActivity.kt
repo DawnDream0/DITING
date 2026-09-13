@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.haoze.dnssr.data.RequestSource
 import com.haoze.dnssr.ui.*
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import com.haoze.dnssr.vpn.DnsVpnService
 
 class LogRouteActivity : AppLocalizedActivity() {
@@ -27,10 +28,10 @@ class LogRouteActivity : AppLocalizedActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val themeMode = remember { AppSettings.getAppThemeMode(this) }
-            val colorStyle = remember { AppSettings.getThemeColorStyle(this) }
-            val backgroundEnabled = remember { AppSettings.isCustomBackgroundEnabled(this) }
-            val backgroundUri = remember { AppSettings.getCustomBackgroundUri(this) }
+            val themeMode = remember { AppearanceSettingsStore.getAppThemeMode(this) }
+            val colorStyle = remember { AppearanceSettingsStore.getThemeColorStyle(this) }
+            val backgroundEnabled = remember { AppearanceSettingsStore.isCustomBackgroundEnabled(this) }
+            val backgroundUri = remember { AppearanceSettingsStore.getCustomBackgroundUri(this) }
 
             AppThemeSurface(
                 themeMode = themeMode,

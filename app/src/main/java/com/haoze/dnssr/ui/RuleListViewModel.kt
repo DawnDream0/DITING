@@ -7,6 +7,7 @@ import com.haoze.dnssr.data.AppDatabase
 import com.haoze.dnssr.data.entity.SubscriptionEntity
 import com.haoze.dnssr.data.entity.RuleScope
 import com.haoze.dnssr.data.entity.GoUrlRuleKind
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.AllowListManager
 import com.haoze.dnssr.vpn.BlockListManager
 import com.haoze.dnssr.vpn.RewriteRuleManager
@@ -165,8 +166,8 @@ class RuleListViewModel(application: Application) : AndroidViewModel(application
         val filter = _sourceFilter.value
         val source = filter.source
         val appScopeFilter = filter.appScope
-        val domainRulesEnabled = AppSettings.isDomainRulesEnabled(getApplication())
-        val addressRulesOperational = AppSettings.isAddressRulesFullyOperational(getApplication())
+        val domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(getApplication())
+        val addressRulesOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(getApplication())
 
         return if (ruleKind.isUrlRule) {
             val rules = goUrlRuleDao.byKind(ruleKind.goUrlRuleKind!!)

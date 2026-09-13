@@ -6,7 +6,7 @@ import com.haoze.dnssr.data.BootstrapOverallStats
 import com.haoze.dnssr.data.BootstrapStats
 import com.haoze.dnssr.data.BootstrapStatsRange
 import com.haoze.dnssr.data.dao.BootstrapLogDao
-import com.haoze.dnssr.ui.AppSettings
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
 import com.haoze.dnssr.util.statsRangeStartMillis
 import com.haoze.dnssr.vpn.BootstrapHealthStore
 
@@ -18,7 +18,7 @@ class BootstrapLogRepository(
         val since = statsRangeStartMillis(range)
         val overallRow = dao.overallStats(since)
         val healthByIp = BootstrapHealthStore.loadAll(context)
-        val entriesById = AppSettings.loadBootstrapIpEntries(context).associateBy { it.id }
+        val entriesById = BootstrapDnsSettingsStore.loadBootstrapIpEntries(context).associateBy { it.id }
 
         return BootstrapStats(
             overall = BootstrapOverallStats(

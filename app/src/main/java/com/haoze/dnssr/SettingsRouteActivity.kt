@@ -1,5 +1,7 @@
 package com.haoze.dnssr
 
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.ui.showToast
 import android.content.Intent
 import android.net.Uri
@@ -63,10 +65,10 @@ class SettingsRouteActivity : AppLocalizedActivity() {
         enableEdgeToEdge()
         setResult(RESULT_OK, resultData)
         setContent {
-            var themeMode by remember(routeRefreshVersion) { mutableStateOf(AppSettings.getAppThemeMode(this)) }
-            var colorStyle by remember(routeRefreshVersion) { mutableStateOf(AppSettings.getThemeColorStyle(this)) }
-            var backgroundEnabled by remember(routeRefreshVersion) { mutableStateOf(AppSettings.isCustomBackgroundEnabled(this)) }
-            var backgroundUri by remember(routeRefreshVersion) { mutableStateOf(AppSettings.getCustomBackgroundUri(this)) }
+            var themeMode by remember(routeRefreshVersion) { mutableStateOf(AppearanceSettingsStore.getAppThemeMode(this)) }
+            var colorStyle by remember(routeRefreshVersion) { mutableStateOf(AppearanceSettingsStore.getThemeColorStyle(this)) }
+            var backgroundEnabled by remember(routeRefreshVersion) { mutableStateOf(AppearanceSettingsStore.isCustomBackgroundEnabled(this)) }
+            var backgroundUri by remember(routeRefreshVersion) { mutableStateOf(AppearanceSettingsStore.getCustomBackgroundUri(this)) }
 
             AppThemeSurface(
                 themeMode = themeMode,
@@ -101,8 +103,8 @@ class SettingsRouteActivity : AppLocalizedActivity() {
                         recordThemeChanged()
                     },
                     onCustomBackgroundChanged = {
-                        backgroundEnabled = AppSettings.isCustomBackgroundEnabled(this@SettingsRouteActivity)
-                        backgroundUri = AppSettings.getCustomBackgroundUri(this@SettingsRouteActivity)
+                        backgroundEnabled = AppearanceSettingsStore.isCustomBackgroundEnabled(this@SettingsRouteActivity)
+                        backgroundUri = AppearanceSettingsStore.getCustomBackgroundUri(this@SettingsRouteActivity)
                         recordBackgroundChanged()
                     },
                     onExitApp = ::finishAndRemoveTask,
@@ -110,9 +112,9 @@ class SettingsRouteActivity : AppLocalizedActivity() {
                     onCheckForAppUpdate = { appUpdateHost.checkForUpdate(manual = true) },
                     onDownloadAppUpdate = { appUpdateHost.downloadUpdate() },
                     onJoinQqGroup = ::joinQqGroup,
-                    startupUpdateCheckDisabled = AppSettings.isStartupUpdateCheckDisabled(this),
+                    startupUpdateCheckDisabled = SystemSettingsStore.isStartupUpdateCheckDisabled(this),
                     onStartupUpdateCheckDisabledChange = {
-                        AppSettings.setStartupUpdateCheckDisabled(this, it)
+                        SystemSettingsStore.setStartupUpdateCheckDisabled(this, it)
                     }
                 )
                 if (route == Routes.APP_UPDATE) {

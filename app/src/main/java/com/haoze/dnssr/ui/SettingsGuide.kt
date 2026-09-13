@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.haoze.dnssr.ui.components.SettingsCheckboxItem
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 
 data class SettingsGuide(
     val id: String,
@@ -136,7 +137,7 @@ fun SettingsGuideHost(
         guide
     }
     var showGuide by remember(guide.id) {
-        mutableStateOf(!AppSettings.isSettingsGuideAcknowledged(context, guide.id))
+        mutableStateOf(!SystemSettingsStore.isSettingsGuideAcknowledged(context, guide.id))
     }
     var acknowledged by remember(guide.id) { mutableStateOf(false) }
 
@@ -173,7 +174,7 @@ fun SettingsGuideHost(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        AppSettings.acknowledgeSettingsGuide(context, guide.id)
+                        SystemSettingsStore.acknowledgeSettingsGuide(context, guide.id)
                         showGuide = false
                     },
                     enabled = guide.acknowledgement == null || acknowledged

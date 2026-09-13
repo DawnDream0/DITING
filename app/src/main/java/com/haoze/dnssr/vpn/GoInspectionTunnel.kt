@@ -4,12 +4,12 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Process
 import android.util.Log
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.DnsResolutionMode
 import com.haoze.dnssr.ui.OutboundProxyConfig
 import com.haoze.dnssr.vpn.cache.DnsCachePolicy
@@ -137,14 +137,14 @@ class GoInspectionTunnel(
     fun updatePassthroughRules() {
         runCatching {
             val presetRules = DefaultWhitelistSeeder.parseAssetWhitelist(context).map { it.first }
-            val customBypassRules = AppSettings.getHttpsBypassRules(context)
+            val customBypassRules = AppRulesSettingsStore.getHttpsBypassRules(context)
             val combined = (presetRules + customBypassRules).filter { it.isNotBlank() }
             engine.setExtraPassthroughSuffixes(combined.joinToString("\n"))
         }.onFailure { Log.w(TAG, "Failed to update HTTPS bypass rules", it) }
     }
 
     fun updateCnameRewriteRules() {
-        if (!inspectionEnabled || !AppSettings.isAddressRulesEnabled(vpnService)) {
+        if (!inspectionEnabled || !AppRulesSettingsStore.isAddressRulesEnabled(vpnService)) {
             engine.setRewriteRules("")
             return
         }
@@ -152,7 +152,7 @@ class GoInspectionTunnel(
     }
 
     fun updateRequestRules() {
-        if (!inspectionEnabled || !AppSettings.isAddressRulesEnabled(vpnService)) {
+        if (!inspectionEnabled || !AppRulesSettingsStore.isAddressRulesEnabled(vpnService)) {
             engine.setRequestRules("")
             return
         }

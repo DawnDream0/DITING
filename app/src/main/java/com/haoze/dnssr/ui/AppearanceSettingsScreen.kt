@@ -12,6 +12,7 @@ import com.haoze.dnssr.ui.components.SettingsGroupTitle
 import com.haoze.dnssr.ui.components.SettingsNavigationGroup
 import com.haoze.dnssr.ui.components.SettingsNavigationItemData
 import com.haoze.dnssr.ui.components.SettingsScaffold
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 
 @Composable
 fun AppearanceSettingsScreen(
@@ -25,8 +26,8 @@ fun AppearanceSettingsScreen(
     onNavigateToCustomBackground: () -> Unit
 ) {
     val context = LocalContext.current
-    val mode = AppSettings.getAppThemeMode(context)
-    val colorStyle = AppSettings.getThemeColorStyle(context)
+    val mode = AppearanceSettingsStore.getAppThemeMode(context)
+    val colorStyle = AppearanceSettingsStore.getThemeColorStyle(context)
 
     SettingsScaffold(title = localizedText(title), onBack = onBack) { innerPadding ->
         LazyColumn(

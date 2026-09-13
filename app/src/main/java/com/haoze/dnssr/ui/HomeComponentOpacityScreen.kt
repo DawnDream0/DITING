@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import kotlin.math.roundToInt
 import com.haoze.dnssr.ui.components.SettingsGroupTitle
 import com.haoze.dnssr.ui.components.SettingsScaffold
@@ -23,11 +24,11 @@ import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 @Composable
 fun HomeComponentOpacityScreen(onBack: () -> Unit, title: String) {
     val context = LocalContext.current
-    var powerButton by remember { mutableStateOf(AppSettings.getHomePowerButtonOpacity(context)) }
-    var providerSelector by remember { mutableStateOf(AppSettings.getHomeProviderSelectorOpacity(context)) }
-    var modeButton by remember { mutableStateOf(AppSettings.getHomeModeButtonOpacity(context)) }
-    var poem by remember { mutableStateOf(AppSettings.getHomePoemOpacity(context)) }
-    var dnsDetail by remember { mutableStateOf(AppSettings.getHomeDnsDetailOpacity(context)) }
+    var powerButton by remember { mutableStateOf(AppearanceSettingsStore.getHomePowerButtonOpacity(context)) }
+    var providerSelector by remember { mutableStateOf(AppearanceSettingsStore.getHomeProviderSelectorOpacity(context)) }
+    var modeButton by remember { mutableStateOf(AppearanceSettingsStore.getHomeModeButtonOpacity(context)) }
+    var poem by remember { mutableStateOf(AppearanceSettingsStore.getHomePoemOpacity(context)) }
+    var dnsDetail by remember { mutableStateOf(AppearanceSettingsStore.getHomeDnsDetailOpacity(context)) }
 
     SettingsScaffold(title = localizedText(title), onBack = onBack) { innerPadding ->
         LazyColumn(
@@ -41,17 +42,17 @@ fun HomeComponentOpacityScreen(onBack: () -> Unit, title: String) {
                     content = listOf(
                         {
                             OpacitySlider(localizedText("启动按钮"), powerButton, { powerButton = it }) {
-                                AppSettings.setHomePowerButtonOpacity(context, powerButton)
+                                AppearanceSettingsStore.setHomePowerButtonOpacity(context, powerButton)
                             }
                         },
                         {
                             OpacitySlider(localizedText("解析服务选择框"), providerSelector, { providerSelector = it }) {
-                                AppSettings.setHomeProviderSelectorOpacity(context, providerSelector)
+                                AppearanceSettingsStore.setHomeProviderSelectorOpacity(context, providerSelector)
                             }
                         },
                         {
                             OpacitySlider(localizedText("模式切换按钮"), modeButton, { modeButton = it }) {
-                                AppSettings.setHomeModeButtonOpacity(context, modeButton)
+                                AppearanceSettingsStore.setHomeModeButtonOpacity(context, modeButton)
                             }
                         }
                     )
@@ -63,12 +64,12 @@ fun HomeComponentOpacityScreen(onBack: () -> Unit, title: String) {
                     content = listOf(
                         {
                             OpacitySlider(localizedText("首页古诗"), poem, { poem = it }) {
-                                AppSettings.setHomePoemOpacity(context, poem)
+                                AppearanceSettingsStore.setHomePoemOpacity(context, poem)
                             }
                         },
                         {
                             OpacitySlider(localizedText("DNS 服务详情"), dnsDetail, { dnsDetail = it }) {
-                                AppSettings.setHomeDnsDetailOpacity(context, dnsDetail)
+                                AppearanceSettingsStore.setHomeDnsDetailOpacity(context, dnsDetail)
                             }
                         }
                     )

@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haoze.dnssr.R
 import com.haoze.dnssr.ui.components.SettingsCornerShape
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 
 internal data class FeatureHubItem(
     val title: String,
@@ -113,7 +114,7 @@ internal fun FeatureHubScreen(
 ) {
     val context = LocalContext.current
     var showLogLongPressHint by remember {
-        mutableStateOf(!AppSettings.isSettingsGuideAcknowledged(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID))
+        mutableStateOf(!SystemSettingsStore.isSettingsGuideAcknowledged(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID))
     }
 
     val categories = listOf(
@@ -159,7 +160,7 @@ internal fun FeatureHubScreen(
                     icon = Icons.Filled.History,
                     onClick = onNavigateToLogs,
                     onLongClick = {
-                        AppSettings.acknowledgeSettingsGuide(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID)
+                        SystemSettingsStore.acknowledgeSettingsGuide(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID)
                         showLogLongPressHint = false
                         onNavigateToLogRetentionSettings()
                     }

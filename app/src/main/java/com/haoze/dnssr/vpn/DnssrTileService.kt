@@ -13,8 +13,8 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.haoze.dnssr.MainActivity
 import com.haoze.dnssr.R
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.localizedText
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 
 /**
  * Quick Settings tile service.
@@ -49,7 +49,7 @@ class DnssrTileService : TileService() {
         }
 
         // Not running: check whether the initial agreement has been accepted
-        if (!AppSettings.isInitialAgreementAccepted(this)) {
+        if (!SystemSettingsStore.isInitialAgreementAccepted(this)) {
             openMainActivity(requestVpn = true)
             return
         }

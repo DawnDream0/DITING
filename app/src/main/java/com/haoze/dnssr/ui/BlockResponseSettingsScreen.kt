@@ -30,6 +30,7 @@ import com.haoze.dnssr.ui.components.SettingsRadioItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.BlockResponseMode
 import com.haoze.dnssr.vpn.DynamicBlockResponseConfig
 
@@ -40,13 +41,13 @@ fun BlockResponseSettingsScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    var responseMode by remember { mutableStateOf(AppSettings.getBlockResponseMode(context)) }
-    var dynamicConfig by remember { mutableStateOf(AppSettings.getDynamicBlockResponseConfig(context)) }
+    var responseMode by remember { mutableStateOf(AppRulesSettingsStore.getBlockResponseMode(context)) }
+    var dynamicConfig by remember { mutableStateOf(AppRulesSettingsStore.getDynamicBlockResponseConfig(context)) }
     var showParameterDialog by remember { mutableStateOf(false) }
 
     fun saveDynamicConfig(next: DynamicBlockResponseConfig) {
         dynamicConfig = next
-        AppSettings.setDynamicBlockResponseConfig(context, next)
+        AppRulesSettingsStore.setDynamicBlockResponseConfig(context, next)
         onRuntimeDnsSettingsChanged()
     }
 
@@ -69,7 +70,7 @@ fun BlockResponseSettingsScreen(
                             onClick = {
                                 if (responseMode != mode) {
                                     responseMode = mode
-                                    AppSettings.setBlockResponseMode(context, mode)
+                                    AppRulesSettingsStore.setBlockResponseMode(context, mode)
                                     onRuntimeDnsSettingsChanged()
                                 }
                             }

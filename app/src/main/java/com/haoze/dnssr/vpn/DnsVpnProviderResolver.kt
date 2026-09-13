@@ -2,8 +2,8 @@ package com.haoze.dnssr.vpn
 
 import android.content.Context
 import android.content.Intent
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.DnsResolutionMode
+import com.haoze.dnssr.ui.settings.ResolutionSettingsStore
 import java.security.MessageDigest
 
 /**
@@ -48,21 +48,21 @@ object DnsVpnProviderResolver {
                 )
             }
         }
-        when (AppSettings.getDnsResolutionMode(context)) {
+        when (ResolutionSettingsStore.getDnsResolutionMode(context)) {
             DnsResolutionMode.SINGLE -> Unit
             DnsResolutionMode.SMART_PREDICTION,
             DnsResolutionMode.PARALLEL_RACE -> {
-                val ids = if (AppSettings.getDnsResolutionMode(context) == DnsResolutionMode.SMART_PREDICTION) {
-                    AppSettings.getSmartPredictionProviderIds(context)
+                val ids = if (ResolutionSettingsStore.getDnsResolutionMode(context) == DnsResolutionMode.SMART_PREDICTION) {
+                    ResolutionSettingsStore.getSmartPredictionProviderIds(context)
                 } else {
-                    AppSettings.getParallelRaceProviderIds(context)
+                    ResolutionSettingsStore.getParallelRaceProviderIds(context)
                 }
                 val raceProviders = DnsProvider.loadRuntimeProviders(context).filter { it.id in ids }
                 if (raceProviders.size >= 2) return raceProviders
             }
             DnsResolutionMode.PRIMARY_BACKUP -> {
                 val byId = DnsProvider.loadRuntimeProviders(context).associateBy { it.id }
-                val ordered = AppSettings.getPrimaryBackupProviderIds(context).mapNotNull(byId::get)
+                val ordered = ResolutionSettingsStore.getPrimaryBackupProviderIds(context).mapNotNull(byId::get)
                 if (ordered.size >= 2) return ordered
             }
         }

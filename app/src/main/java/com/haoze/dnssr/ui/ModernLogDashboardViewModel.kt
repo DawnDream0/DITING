@@ -14,6 +14,7 @@ import com.haoze.dnssr.data.repository.BootstrapLogRepository
 import com.haoze.dnssr.data.repository.DnsCacheRepository
 import com.haoze.dnssr.data.repository.DnsLogRepository
 import com.haoze.dnssr.data.repository.RaceLogRepository
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.util.dayStartMillis
 import com.haoze.dnssr.vpn.LogResult
 import kotlinx.coroutines.Dispatchers
@@ -139,7 +140,7 @@ class ModernLogDashboardViewModel(application: Application) : AndroidViewModel(a
 
     private suspend fun buildDashboardState(): ModernLogDashboardUiState {
         val now = System.currentTimeMillis()
-        val logMode = AppSettings.getDnsLogMode(getApplication())
+        val logMode = SystemSettingsStore.getDnsLogMode(getApplication())
         val storedDailyStats = if (logMode == DnsLogMode.OFF) null else dnsLogRepository.dailyStats(dayStartMillis())
         val dailyStats = storedDailyStats?.let {
             if (logMode == DnsLogMode.BLOCKED_AND_ERRORS) it.copy(passed = 0, cached = 0) else it

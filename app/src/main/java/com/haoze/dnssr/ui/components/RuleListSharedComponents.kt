@@ -51,8 +51,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.BoxScope
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.localizedText
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 
 /**
  * Shared components for rule-management screens:
@@ -469,13 +469,13 @@ fun RuleItemActionsMenu(
 fun masterDisabledMessage(context: Context, isDomainType: Boolean): String {
     return if (isDomainType) {
         "请先在规则控制中开启【启用域名规则】"
-    } else if (!AppSettings.isHttpsInspectionReady(context)) {
+    } else if (!AppRulesSettingsStore.isHttpsInspectionReady(context)) {
         "请先安装并验证 CA 根证书"
-    } else if (!AppSettings.isHttpInspectionEnabled(context)) {
+    } else if (!AppRulesSettingsStore.isHttpInspectionEnabled(context)) {
         "请先在 HTTPS 流量检查中开启检查"
-    } else if (AppSettings.getHttpInspectionAppPackages(context).isEmpty()) {
+    } else if (AppRulesSettingsStore.getHttpInspectionAppPackages(context).isEmpty()) {
         "请先在 HTTPS 流量检查中选择目标应用"
-    } else if (!AppSettings.isAddressRulesEnabled(context)) {
+    } else if (!AppRulesSettingsStore.isAddressRulesEnabled(context)) {
         "请先在 HTTPS 流量检查中开启【启用 URL 规则与重定向】"
     } else {
         "URL 规则当前未就绪"

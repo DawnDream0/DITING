@@ -38,6 +38,7 @@ import com.haoze.dnssr.data.dao.MirrorTemplateDao
 import com.haoze.dnssr.data.dao.GoUrlRuleDao
 import com.haoze.dnssr.data.entity.AppTrafficDailyEntity
 import com.haoze.dnssr.data.dao.AppTrafficDao
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 
 @Database(
     entities = [
@@ -105,7 +106,7 @@ abstract class AppDatabase : RoomDatabase() {
 
                         override fun onDestructiveMigration(db: SupportSQLiteDatabase) {
                             super.onDestructiveMigration(db)
-                            com.haoze.dnssr.ui.AppSettings.setDataResetNoticePending(context.applicationContext, true)
+                            com.haoze.dnssr.ui.settings.SystemSettingsStore.setDataResetNoticePending(context.applicationContext, true)
                         }
                     })
                     .build().also { INSTANCE = it }

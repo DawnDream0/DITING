@@ -7,6 +7,7 @@ import com.haoze.dnssr.data.AppDatabase
 import com.haoze.dnssr.data.entity.RewriteRuleEntity
 import com.haoze.dnssr.data.entity.RewriteTargetType
 import com.haoze.dnssr.data.entity.RuleScope
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.RewriteRuleManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,8 +115,8 @@ class RewriteListViewModel(application: Application) : AndroidViewModel(applicat
 
     fun loadStats() {
         viewModelScope.launch(Dispatchers.IO) {
-            val domainRulesEnabled = AppSettings.isDomainRulesEnabled(getApplication())
-            val addressRulesOperational = AppSettings.isAddressRulesFullyOperational(getApplication())
+            val domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(getApplication())
+            val addressRulesOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(getApplication())
 
             val ipv4Total = rewriteRuleDao.countByTargetType(RewriteTargetType.IPV4)
             val ipv6Total = rewriteRuleDao.countByTargetType(RewriteTargetType.IPV6)
@@ -148,8 +149,8 @@ class RewriteListViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch(Dispatchers.IO) {
             val query = _searchQuery.value.trim()
             val currentFilter = _filter.value
-            val domainRulesEnabled = AppSettings.isDomainRulesEnabled(getApplication())
-            val addressRulesOperational = AppSettings.isAddressRulesFullyOperational(getApplication())
+            val domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(getApplication())
+            val addressRulesOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(getApplication())
 
             val total = when (currentFilter) {
                 RewriteListFilter.ALL -> {

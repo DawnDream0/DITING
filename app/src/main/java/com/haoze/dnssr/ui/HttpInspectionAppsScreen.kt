@@ -9,11 +9,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.haoze.dnssr.ui.components.SettingsScaffold
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 
 @Composable
 fun HttpInspectionAppsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val initialPackages = remember { AppSettings.getHttpInspectionAppPackages(context) }
+    val initialPackages = remember { AppRulesSettingsStore.getHttpInspectionAppPackages(context) }
     var selectedPackages by remember { mutableStateOf(initialPackages) }
 
     val appListAccess = rememberAppListAccessState { loadInstalledApps(context) }
@@ -34,10 +35,10 @@ fun HttpInspectionAppsScreen(onBack: () -> Unit) {
     }
 
     fun saveHttpInspectionApps() {
-        AppSettings.setHttpInspectionAppPackages(context, selectedPackages)
-        AppSettings.setExcludedAppPackages(context, AppSettings.getExcludedAppPackages(context) - selectedPackages)
-        AppSettings.setBlockedAppPackages(context, AppSettings.getBlockedAppPackages(context) - selectedPackages)
-        AppSettings.setAppAllowlistPackages(context, AppSettings.getAppAllowlistPackages(context) - selectedPackages)
+        AppRulesSettingsStore.setHttpInspectionAppPackages(context, selectedPackages)
+        AppRulesSettingsStore.setExcludedAppPackages(context, AppRulesSettingsStore.getExcludedAppPackages(context) - selectedPackages)
+        AppRulesSettingsStore.setBlockedAppPackages(context, AppRulesSettingsStore.getBlockedAppPackages(context) - selectedPackages)
+        AppRulesSettingsStore.setAppAllowlistPackages(context, AppRulesSettingsStore.getAppAllowlistPackages(context) - selectedPackages)
         RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
         context.showToast("已保存检查应用")
     }
@@ -49,13 +50,13 @@ fun HttpInspectionAppsScreen(onBack: () -> Unit) {
         selectedPackages = selectedPackages,
         onSelectedPackagesChange = { selectedPackages = it },
         initialFilter = AppListFilter.entries.firstOrNull {
-            it.name == AppSettings.getHttpInspectionAppsFilter(context)
+            it.name == AppRulesSettingsStore.getHttpInspectionAppsFilter(context)
         } ?: AppListFilter.USER,
         initialSort = AppListSort.entries.firstOrNull {
-            it.name == AppSettings.getHttpInspectionAppsSort(context)
+            it.name == AppRulesSettingsStore.getHttpInspectionAppsSort(context)
         } ?: AppListSort.LABEL_ASC,
-        onFilterChanged = { AppSettings.setHttpInspectionAppsFilter(context, it.name) },
-        onSortChanged = { AppSettings.setHttpInspectionAppsSort(context, it.name) },
+        onFilterChanged = { AppRulesSettingsStore.setHttpInspectionAppsFilter(context, it.name) },
+        onSortChanged = { AppRulesSettingsStore.setHttpInspectionAppsSort(context, it.name) },
         showSelectionActions = true,
         isDirty = selectedPackages != initialPackages,
         onSave = { saveHttpInspectionApps() },

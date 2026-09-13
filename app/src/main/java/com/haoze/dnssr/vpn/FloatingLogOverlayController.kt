@@ -5,6 +5,7 @@ import android.graphics.PixelFormat
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.ui.showToast
 import android.view.View
 import android.view.WindowManager
@@ -13,7 +14,6 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import com.haoze.dnssr.data.AppDatabase
 import com.haoze.dnssr.data.repository.RequestLogRepository
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.localizedText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,11 +48,11 @@ class FloatingLogOverlayController(context: Context) {
     private var refreshJob: Job? = null
     // Last actually rendered log list: skips a full tree rebuild when no new logs arrived
     private var lastRenderedLogs: List<FloatingLogItem>? = null
-    private var appInForeground = AppSettings.isMainActivityForeground(appContext)
+    private var appInForeground = SystemSettingsStore.isMainActivityForeground(appContext)
     private var vpnRunning = false
     private var hiddenForCurrentBackground = false
     private var expanded = false
-    private var panelSize = AppSettings.getFloatingLogPanelSize(appContext)
+    private var panelSize = SystemSettingsStore.getFloatingLogPanelSize(appContext)
     private var downRawX = 0f
     private var downRawY = 0f
     private var downWindowX = 0
@@ -70,7 +70,7 @@ class FloatingLogOverlayController(context: Context) {
     }
 
     fun refreshSettings() {
-        panelSize = AppSettings.getFloatingLogPanelSize(appContext)
+        panelSize = SystemSettingsStore.getFloatingLogPanelSize(appContext)
         syncVisibility()
         if (expanded && logContainer != null) {
             val panel = logContainer?.parent?.parent as? View
@@ -89,7 +89,7 @@ class FloatingLogOverlayController(context: Context) {
     }
 
     private fun syncVisibility() {
-        if (!vpnRunning || appInForeground || hiddenForCurrentBackground || !AppSettings.isFloatingLogEnabled(appContext)) {
+        if (!vpnRunning || appInForeground || hiddenForCurrentBackground || !SystemSettingsStore.isFloatingLogEnabled(appContext)) {
             refreshJob?.cancel()
             removeWindow()
             return
@@ -195,7 +195,7 @@ class FloatingLogOverlayController(context: Context) {
 
     private fun cyclePanelSize() {
         panelSize = (panelSize + 1) % 3
-        AppSettings.setFloatingLogPanelSize(appContext, panelSize)
+        SystemSettingsStore.setFloatingLogPanelSize(appContext, panelSize)
         applyPanelSize()
         appContext.showToast("悬浮窗：${panelSizeName()}", Toast.LENGTH_SHORT)
     }

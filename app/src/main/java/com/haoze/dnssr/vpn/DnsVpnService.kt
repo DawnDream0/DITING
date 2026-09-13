@@ -15,10 +15,15 @@ import com.haoze.dnssr.notification.NotificationSettingsStore
 import com.haoze.dnssr.notification.VpnMonitorManager
 import com.haoze.dnssr.notification.VpnNotificationBuilder
 import com.haoze.dnssr.notification.VpnSpeedMonitor
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.DnsLogMode
 import com.haoze.dnssr.ui.DnsResolutionMode
 import com.haoze.dnssr.ui.PermissionDisclosureSettings
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
+import com.haoze.dnssr.ui.settings.DnsCacheSettingsStore
+import com.haoze.dnssr.ui.settings.OutboundProxySettingsStore
+import com.haoze.dnssr.ui.settings.ResolutionSettingsStore
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.vpn.cache.DnsCachePolicy
 import com.haoze.dnssr.vpn.traffic.TrafficStatsManager
 import kotlinx.coroutines.CoroutineScope
@@ -178,13 +183,13 @@ class DnsVpnService : VpnService() {
 
     private fun scheduleIpv6AdaptationCheck(reason: String) {
         if (tunnelManager.vpnInterface == null) return
-        if (AppSettings.getIpv6Mode(this) != Ipv6Mode.AUTO) return
+        if (SystemSettingsStore.getIpv6Mode(this) != Ipv6Mode.AUTO) return
 
         networkChangeDebounceJob?.cancel()
         networkChangeDebounceJob = serviceScope.launch {
             delay(1500)
             if (tunnelManager.vpnInterface == null) return@launch
-            if (AppSettings.getIpv6Mode(this@DnsVpnService) != Ipv6Mode.AUTO) return@launch
+            if (SystemSettingsStore.getIpv6Mode(this@DnsVpnService) != Ipv6Mode.AUTO) return@launch
 
             val physicalIpv6Support = tunnelManager.hasPhysicalIpv6Support(this@DnsVpnService)
             val currentIpv6Active = tunnelManager.isIpv6Active
@@ -204,7 +209,7 @@ class DnsVpnService : VpnService() {
     }
 
     internal fun onOutboundProxyStatus(state: String, message: String) {
-        AppSettings.setOutboundProxyStatus(this, state, message)
+        OutboundProxySettingsStore.setOutboundProxyStatus(this, state, message)
         refreshForegroundNotification()
     }
 
@@ -216,15 +221,15 @@ class DnsVpnService : VpnService() {
         speedMonitor = VpnSpeedMonitor(this)
         floatingLogOverlay = FloatingLogOverlayController(this)
 
-        activeLogRetentionDays = AppSettings.logRetentionDays(this)
-        activeDnsCachePolicy = AppSettings.getDnsCachePolicy(this)
-        activeResolutionMode = AppSettings.getDnsResolutionMode(this)
-        activeDnsLogMode = AppSettings.getDnsLogMode(this)
-        activeBlockResponseMode = AppSettings.getBlockResponseMode(this)
-        activeDynamicBlockResponseConfig = AppSettings.getDynamicBlockResponseConfig(this)
-        activeBootstrapEnabled = AppSettings.isBootstrapEnabled(this)
-        activeBootstrapIps = AppSettings.loadEnabledBootstrapIpEntries(this)
-        activeDomainRulesEnabled = AppSettings.isDomainRulesEnabled(this)
+        activeLogRetentionDays = SystemSettingsStore.logRetentionDays(this)
+        activeDnsCachePolicy = DnsCacheSettingsStore.getDnsCachePolicy(this)
+        activeResolutionMode = ResolutionSettingsStore.getDnsResolutionMode(this)
+        activeDnsLogMode = SystemSettingsStore.getDnsLogMode(this)
+        activeBlockResponseMode = AppRulesSettingsStore.getBlockResponseMode(this)
+        activeDynamicBlockResponseConfig = AppRulesSettingsStore.getDynamicBlockResponseConfig(this)
+        activeBootstrapEnabled = BootstrapDnsSettingsStore.isBootstrapEnabled(this)
+        activeBootstrapIps = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(this)
+        activeDomainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(this)
 
         dbComponents.initialize(
             context = this,
@@ -271,7 +276,7 @@ class DnsVpnService : VpnService() {
             ACTION_REFRESH_FLOATING_LOG -> floatingLogOverlay.refreshSettings()
             ACTION_FLOATING_LOG_APP_STATE -> {
                 val foreground = intent.getBooleanExtra(EXTRA_APP_FOREGROUND, true)
-                AppSettings.setMainActivityForeground(this, foreground)
+                SystemSettingsStore.setMainActivityForeground(this, foreground)
                 floatingLogOverlay.setAppInForeground(foreground)
             }
             ACTION_SYNC_RULE -> ruleSyncManager.scheduleRuleSync(
@@ -314,30 +319,30 @@ class DnsVpnService : VpnService() {
         startIntent = intent
         DnsVpnStatusNotifier.setRunningFlag(this, true)
 
-        activeResolutionMode = AppSettings.getDnsResolutionMode(this)
+        activeResolutionMode = ResolutionSettingsStore.getDnsResolutionMode(this)
         CrashBreadcrumbs.record("VPN", "VPN starting, mode=${activeResolutionMode.name}")
         val providers = DnsVpnProviderResolver.resolveDnsProviders(this, intent)
         activeProviders = providers
 
-        val inspectionConfigured = AppSettings.isHttpInspectionEnabled(this) &&
-            AppSettings.getHttpInspectionAppPackages(this).isNotEmpty()
+        val inspectionConfigured = AppRulesSettingsStore.isHttpInspectionEnabled(this) &&
+            AppRulesSettingsStore.getHttpInspectionAppPackages(this).isNotEmpty()
         val inspectionRequested = inspectionConfigured && tunnelManager.isHttpsInspectionCertificateInstalled(this)
-        val blockedPackages = if (AppSettings.isBlockedAppsEnabled(this)) {
-            AppSettings.getBlockedAppPackages(this)
+        val blockedPackages = if (AppRulesSettingsStore.isBlockedAppsEnabled(this)) {
+            AppRulesSettingsStore.getBlockedAppPackages(this)
         } else {
             emptySet()
         }
-        val appAllowlistRules = if (AppSettings.isAppAllowlistEnabled(this)) {
-            AppSettings.getAppAllowlistRuleMap(this)
+        val appAllowlistRules = if (AppRulesSettingsStore.isAppAllowlistEnabled(this)) {
+            AppRulesSettingsStore.getAppAllowlistRuleMap(this)
         } else {
             emptyMap()
         }
-        val outboundProxyConfig = AppSettings.getOutboundProxyConfig(this)
+        val outboundProxyConfig = OutboundProxySettingsStore.getOutboundProxyConfig(this)
         if (outboundProxyConfig.enabled) {
             val validationError = outboundProxyConfig.validationError(this)
             if (validationError != null) {
                 Log.e(TAG, "Outbound proxy configuration rejected: $validationError")
-                AppSettings.setOutboundProxyStatus(this, "error", validationError)
+                OutboundProxySettingsStore.setOutboundProxyStatus(this, "error", validationError)
                 DnsVpnStatusNotifier.setRunningFlag(this, false)
                 DnsVpnStatusNotifier.sendStatusBroadcast(this, false)
                 stopSelf()
@@ -345,7 +350,7 @@ class DnsVpnService : VpnService() {
             }
         }
         val activeInspectionPackages = if (inspectionRequested) {
-            AppSettings.getHttpInspectionAppPackages(this)
+            AppRulesSettingsStore.getHttpInspectionAppPackages(this)
         } else {
             emptySet()
         }
@@ -353,10 +358,10 @@ class DnsVpnService : VpnService() {
         val proxyPackage = outboundProxyConfig.proxyAppPackage.takeIf { outboundProxyConfig.enabled }
         val vpnInterface = tunnelManager.establishVpnInterface(
             vpnService = this,
-            excludedPackages = AppSettings.getExcludedAppPackages(this),
+            excludedPackages = AppRulesSettingsStore.getExcludedAppPackages(this),
             proxyPackage = proxyPackage,
-            bypassLan = AppSettings.isBypassLanEnabled(this),
-            ipv6Mode = AppSettings.getIpv6Mode(this)
+            bypassLan = SystemSettingsStore.isBypassLanEnabled(this),
+            ipv6Mode = SystemSettingsStore.getIpv6Mode(this)
         ) ?: run {
             Log.e(TAG, "Failed to establish VPN")
             PermissionDisclosureSettings.updateVpnGrant(this, false)
@@ -366,8 +371,8 @@ class DnsVpnService : VpnService() {
             return
         }
 
-        activeBootstrapEnabled = AppSettings.isBootstrapEnabled(this)
-        activeBootstrapIps = AppSettings.loadEnabledBootstrapIpEntries(this)
+        activeBootstrapEnabled = BootstrapDnsSettingsStore.isBootstrapEnabled(this)
+        activeBootstrapIps = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(this)
         val started = tunnelManager.startTunnel(
             service = this,
             scope = serviceScope,
@@ -393,7 +398,7 @@ class DnsVpnService : VpnService() {
             return
         }
 
-        if (AppSettings.isAppTrafficStatsEnabled(this) || NotificationSettingsStore.isTrafficSpeedEnabled(this)) {
+        if (SystemSettingsStore.isAppTrafficStatsEnabled(this) || NotificationSettingsStore.isTrafficSpeedEnabled(this)) {
             TrafficStatsManager.start(this, true)
         }
         registerScreenStateReceiver()
@@ -430,15 +435,15 @@ class DnsVpnService : VpnService() {
         serviceScope.launch {
             refreshMutex.withLock {
                 val oldProviders = activeProviders
-                val newCachePolicy = AppSettings.getDnsCachePolicy(this@DnsVpnService)
-                val newResolutionMode = AppSettings.getDnsResolutionMode(this@DnsVpnService)
-                val newBootstrapEnabled = AppSettings.isBootstrapEnabled(this@DnsVpnService)
-                val newBootstrapIps = AppSettings.loadEnabledBootstrapIpEntries(this@DnsVpnService)
-                activeDomainRulesEnabled = AppSettings.isDomainRulesEnabled(this@DnsVpnService)
-                activeDnsLogMode = AppSettings.getDnsLogMode(this@DnsVpnService)
-                activeLogRetentionDays = AppSettings.logRetentionDays(this@DnsVpnService)
-                val newBlockResponseMode = AppSettings.getBlockResponseMode(this@DnsVpnService)
-                val newDynamicBlockResponseConfig = AppSettings.getDynamicBlockResponseConfig(this@DnsVpnService)
+                val newCachePolicy = DnsCacheSettingsStore.getDnsCachePolicy(this@DnsVpnService)
+                val newResolutionMode = ResolutionSettingsStore.getDnsResolutionMode(this@DnsVpnService)
+                val newBootstrapEnabled = BootstrapDnsSettingsStore.isBootstrapEnabled(this@DnsVpnService)
+                val newBootstrapIps = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(this@DnsVpnService)
+                activeDomainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(this@DnsVpnService)
+                activeDnsLogMode = SystemSettingsStore.getDnsLogMode(this@DnsVpnService)
+                activeLogRetentionDays = SystemSettingsStore.logRetentionDays(this@DnsVpnService)
+                val newBlockResponseMode = AppRulesSettingsStore.getBlockResponseMode(this@DnsVpnService)
+                val newDynamicBlockResponseConfig = AppRulesSettingsStore.getDynamicBlockResponseConfig(this@DnsVpnService)
                 val newProviders = runCatching { DnsVpnProviderResolver.resolveDnsProviders(this@DnsVpnService, null) }
 
                 newProviders.fold(
@@ -536,8 +541,8 @@ class DnsVpnService : VpnService() {
 
         serviceScope.launch {
             refreshMutex.withLock {
-                val rules = if (AppSettings.isAppAllowlistEnabled(this@DnsVpnService)) {
-                    AppSettings.getAppAllowlistRuleMap(this@DnsVpnService)
+                val rules = if (AppRulesSettingsStore.isAppAllowlistEnabled(this@DnsVpnService)) {
+                    AppRulesSettingsStore.getAppAllowlistRuleMap(this@DnsVpnService)
                 } else {
                     emptyMap()
                 }
@@ -739,7 +744,7 @@ class DnsVpnService : VpnService() {
         }
 
         fun updateFloatingLogAppState(context: Context, foreground: Boolean) {
-            AppSettings.setMainActivityForeground(context, foreground)
+            SystemSettingsStore.setMainActivityForeground(context, foreground)
             if (isRunning(context)) {
                 context.startService(
                     Intent(context, DnsVpnService::class.java)

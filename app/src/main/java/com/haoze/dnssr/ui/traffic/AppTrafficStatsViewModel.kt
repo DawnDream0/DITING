@@ -6,7 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.haoze.dnssr.data.AppDatabase
 import com.haoze.dnssr.data.entity.AppTrafficDailyEntity
-import com.haoze.dnssr.ui.AppSettings
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.vpn.LogMaintenance
 import com.haoze.dnssr.vpn.traffic.SystemAppClassifier
 import com.haoze.dnssr.vpn.traffic.TrafficStatsManager
@@ -31,7 +31,7 @@ class AppTrafficStatsViewModel(application: Application) : AndroidViewModel(appl
 
     private val _uiState = MutableStateFlow(
         AppTrafficStatsUiState(
-            hideSystemApps = AppSettings.isTrafficStatsHideSystemApps(application)
+            hideSystemApps = SystemSettingsStore.isTrafficStatsHideSystemApps(application)
         )
     )
     val uiState: StateFlow<AppTrafficStatsUiState> = _uiState.asStateFlow()
@@ -99,7 +99,7 @@ class AppTrafficStatsViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun setHideSystemApps(hide: Boolean) {
-        AppSettings.setTrafficStatsHideSystemApps(getApplication(), hide)
+        SystemSettingsStore.setTrafficStatsHideSystemApps(getApplication(), hide)
         _uiState.update { it.copy(hideSystemApps = hide) }
         recomputeAppList()
     }

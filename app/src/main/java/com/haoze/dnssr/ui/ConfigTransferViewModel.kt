@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +16,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.haoze.dnssr.data.AppDatabase
+import com.haoze.dnssr.ui.transfer.ConfigExporter
+import com.haoze.dnssr.ui.transfer.ConfigImporter
+import com.haoze.dnssr.ui.transfer.ConfigTransferParser
 import com.haoze.dnssr.vpn.DnsProvider
 import com.haoze.dnssr.vpn.GoUrlRuleManager
 
@@ -25,7 +29,8 @@ enum class ConfigTransferOperation {
 }
 
 class ConfigTransferViewModel(application: Application) : AndroidViewModel(application) {
-    private val manager by lazy { ConfigTransferManager(application) }
+    private val exporter by lazy { ConfigExporter(application) }
+    private val importer by lazy { ConfigImporter(application) }
     private val database by lazy { AppDatabase.getInstance(application) }
 
     private val _operation = MutableStateFlow(ConfigTransferOperation.IDLE)
@@ -62,7 +67,7 @@ class ConfigTransferViewModel(application: Application) : AndroidViewModel(appli
     fun export(uri: Uri, selection: ConfigExportSelection) {
         runOperation(ConfigTransferOperation.EXPORTING) {
             val context = getApplication<Application>()
-            val content = manager.export(selection)
+            val content = exporter.export(selection)
             context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter().use { writer ->
                 requireNotNull(writer) { "无法打开导出文件" }
                 writer.write(content)
@@ -103,7 +108,8 @@ class ConfigTransferViewModel(application: Application) : AndroidViewModel(appli
                     requireNotNull(reader) { "无法读取配置文件" }
                     reader.readText()
                 }
-                val result = manager.import(content) { progress ->
+                val config = ConfigTransferParser.parseAndValidate(content)
+                val result = importer.import(config) { progress ->
                     _importProgress.value = progress
                     progress.log?.let { logText ->
                         synchronized(initialLogs) {
@@ -163,10 +169,10 @@ class ConfigTransferViewModel(application: Application) : AndroidViewModel(appli
                 0
             }
             val managedAppsCount = try {
-                val excluded = AppSettings.getExcludedAppPackages(context)
-                val blocked = AppSettings.getBlockedAppPackages(context)
-                val allowlist = AppSettings.getAppAllowlistRuleMap(context)
-                val inspection = AppSettings.getHttpInspectionAppPackages(context)
+                val excluded = AppRulesSettingsStore.getExcludedAppPackages(context)
+                val blocked = AppRulesSettingsStore.getBlockedAppPackages(context)
+                val allowlist = AppRulesSettingsStore.getAppAllowlistRuleMap(context)
+                val inspection = AppRulesSettingsStore.getHttpInspectionAppPackages(context)
                 (excluded + blocked + allowlist.keys + inspection).distinct().size
             } catch (e: Exception) {
                 0

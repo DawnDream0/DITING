@@ -16,6 +16,7 @@ import com.haoze.dnssr.ui.components.SettingsGroupTitle
 import com.haoze.dnssr.ui.components.SettingsRadioItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import com.haoze.dnssr.vpn.DnsVpnService
 
 @Composable
@@ -25,7 +26,7 @@ fun DayNightModeScreen(
     onThemeModeChanged: (AppThemeMode) -> Unit
 ) {
     val context = LocalContext.current
-    var selectedMode by remember { mutableStateOf(AppSettings.getAppThemeMode(context)) }
+    var selectedMode by remember { mutableStateOf(AppearanceSettingsStore.getAppThemeMode(context)) }
 
     SettingsScaffold(title = localizedText(title), onBack = onBack) { innerPadding ->
         LazyColumn(
@@ -44,7 +45,7 @@ fun DayNightModeScreen(
                                 selected = selectedMode == mode,
                                 onClick = {
                                     selectedMode = mode
-                                    AppSettings.setAppThemeMode(context, mode)
+                                    AppearanceSettingsStore.setAppThemeMode(context, mode)
                                     DnsVpnService.refreshFloatingLogOverlay(context)
                                     onThemeModeChanged(mode)
                                 }

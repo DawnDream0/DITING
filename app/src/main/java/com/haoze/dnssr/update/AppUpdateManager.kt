@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import com.haoze.dnssr.BuildConfig
-import com.haoze.dnssr.ui.AppSettings
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -109,7 +109,7 @@ class AppUpdateManager(
                 }
                 reportProgress(force = true)
                 if (!temporaryFile.renameTo(finalFile)) error("下载更新失败：无法保存安装包")
-                AppSettings.rememberAppUpdateDownload(context, finalFile.absolutePath, update.version)
+                SystemSettingsStore.rememberAppUpdateDownload(context, finalFile.absolutePath, update.version)
                 AppUpdateDownloadState(
                     version = update.version,
                     localPath = finalFile.absolutePath,
@@ -125,18 +125,18 @@ class AppUpdateManager(
         } catch (_: Throwable) {
             temporaryFile.delete()
             finalFile.delete()
-            AppSettings.clearAppUpdateDownload(context)
+            SystemSettingsStore.clearAppUpdateDownload(context)
             AppUpdateDownloadState(version = update.version, status = AppUpdateDownloadStatus.Failed)
         }
     }
 
     suspend fun refreshDownloadState(update: AppUpdateInfo): AppUpdateDownloadState = withContext(Dispatchers.IO) {
-        val localPath = AppSettings.getAppUpdateDownloadPath(context)
-        if (localPath.isBlank() || AppSettings.getAppUpdateDownloadVersion(context) != update.version) {
+        val localPath = SystemSettingsStore.getAppUpdateDownloadPath(context)
+        if (localPath.isBlank() || SystemSettingsStore.getAppUpdateDownloadVersion(context) != update.version) {
             return@withContext AppUpdateDownloadState(version = update.version)
         }
         if (!File(localPath).isFile || File(localPath).length() <= 0L) {
-            AppSettings.clearAppUpdateDownload(context)
+            SystemSettingsStore.clearAppUpdateDownload(context)
             return@withContext AppUpdateDownloadState(version = update.version)
         }
         AppUpdateDownloadState(
@@ -150,8 +150,8 @@ class AppUpdateManager(
 
     fun installDownloadedUpdate(update: AppUpdateInfo): Boolean {
         return runCatching {
-            val path = AppSettings.getAppUpdateDownloadPath(context)
-            check(path.isNotBlank() && AppSettings.getAppUpdateDownloadVersion(context) == update.version)
+            val path = SystemSettingsStore.getAppUpdateDownloadPath(context)
+            check(path.isNotBlank() && SystemSettingsStore.getAppUpdateDownloadVersion(context) == update.version)
             val apkFile = File(path)
             check(apkFile.isFile && apkFile.length() > 0L)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)

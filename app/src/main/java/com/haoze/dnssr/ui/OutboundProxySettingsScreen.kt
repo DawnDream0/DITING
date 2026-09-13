@@ -48,6 +48,7 @@ import com.haoze.dnssr.ui.components.SettingsSwitchItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceItem
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
+import com.haoze.dnssr.ui.settings.OutboundProxySettingsStore
 import com.haoze.dnssr.vpn.DnsVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -62,9 +63,9 @@ fun OutboundProxySettingsScreen(
     selectedAppOverride: Pair<Boolean, String?>? = null
 ) {
     val context = LocalContext.current
-    var draft by remember { mutableStateOf(AppSettings.getOutboundProxyConfig(context)) }
+    var draft by remember { mutableStateOf(OutboundProxySettingsStore.getOutboundProxyConfig(context)) }
     var portText by remember { mutableStateOf(draft.port.toString()) }
-    var proxyStatus by remember { mutableStateOf(AppSettings.getOutboundProxyStatus(context)) }
+    var proxyStatus by remember { mutableStateOf(OutboundProxySettingsStore.getOutboundProxyStatus(context)) }
 
     LaunchedEffect(selectedAppOverride) {
         selectedAppOverride?.let { (_, packageName) ->
@@ -73,7 +74,7 @@ fun OutboundProxySettingsScreen(
     }
     LaunchedEffect(draft.enabled) {
         while (draft.enabled) {
-            proxyStatus = AppSettings.getOutboundProxyStatus(context)
+            proxyStatus = OutboundProxySettingsStore.getOutboundProxyStatus(context)
             delay(1000)
         }
     }
@@ -92,9 +93,9 @@ fun OutboundProxySettingsScreen(
     fun setProxyEnabled(enabled: Boolean) {
         if (draft.enabled == enabled) return
         draft = draft.copy(enabled = enabled)
-        val persistedConfig = AppSettings.getOutboundProxyConfig(context)
-        AppSettings.setOutboundProxyConfig(context, persistedConfig.copy(enabled = enabled))
-        AppSettings.setOutboundProxyStatus(context, if (enabled) "connecting" else "disabled", "")
+        val persistedConfig = OutboundProxySettingsStore.getOutboundProxyConfig(context)
+        OutboundProxySettingsStore.setOutboundProxyConfig(context, persistedConfig.copy(enabled = enabled))
+        OutboundProxySettingsStore.setOutboundProxyStatus(context, if (enabled) "connecting" else "disabled", "")
         if (enabled && !DnsVpnService.isRunning(context)) {
             ContextCompat.startForegroundService(context, DnsVpnService.startIntent(context))
         } else {
@@ -197,8 +198,8 @@ fun OutboundProxySettingsScreen(
                         context.showToast(error, Toast.LENGTH_LONG)
                     } else {
                         draft = savedConfig
-                        AppSettings.setOutboundProxyConfig(context, savedConfig)
-                        AppSettings.setOutboundProxyStatus(context, if (savedConfig.enabled) "connecting" else "disabled", "")
+                        OutboundProxySettingsStore.setOutboundProxyConfig(context, savedConfig)
+                        OutboundProxySettingsStore.setOutboundProxyStatus(context, if (savedConfig.enabled) "connecting" else "disabled", "")
                         RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
                         context.showToast("出站代理设置已保存", Toast.LENGTH_SHORT)
                     }
@@ -216,7 +217,7 @@ fun OutboundProxySettingsScreen(
 @Composable
 fun OutboundProxyAppsScreen(onBack: () -> Unit, onSave: (String) -> Unit) {
     val context = LocalContext.current
-    val initialPackage = remember { AppSettings.getOutboundProxyConfig(context).proxyAppPackage }
+    val initialPackage = remember { OutboundProxySettingsStore.getOutboundProxyConfig(context).proxyAppPackage }
     var selectedPackage by remember { mutableStateOf(initialPackage) }
     val access = rememberAppListAccessState { loadInstalledApps(context) }
     AppListDisclosureDialog(access)

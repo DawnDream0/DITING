@@ -3,10 +3,10 @@ package com.haoze.dnssr.ui.transfer
 import com.haoze.dnssr.data.entity.RewriteTargetType
 import com.haoze.dnssr.data.entity.RuleScope
 import com.haoze.dnssr.data.entity.SubscriptionKind
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.DEFAULT_HOME_VISIBLE_PROTOCOLS
 import com.haoze.dnssr.ui.DnsResolutionMode
 import com.haoze.dnssr.ui.PresetDnsService
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
 import com.haoze.dnssr.vpn.BlockResponseMode
 import com.haoze.dnssr.vpn.DnsProtocol
 import com.haoze.dnssr.vpn.DnsProvider
@@ -85,7 +85,7 @@ object ConfigTransferParser {
         val bootstrapEnabled = if (root.has("bootstrapEnabled")) root.optBoolean("bootstrapEnabled", false) else null
         val bootstrapIps = root.optionalArray("bootstrapIps").mapObjects { obj ->
             val ip = obj.requiredString("ip")
-            if (!AppSettings.isValidBootstrapIp(ip)) throw IllegalArgumentException("配置中包含无效的 Bootstrap IP")
+            if (!BootstrapDnsSettingsStore.isValidBootstrapIp(ip)) throw IllegalArgumentException("配置中包含无效的 Bootstrap IP")
             ImportedBootstrap(obj.requiredString("name"), ip, obj.optBoolean("enabled", true))
         }
         val bootstrapPresetIds = if (root.has("bootstrapPresetIds")) {

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.haoze.dnssr.ui.components.*
 import com.haoze.dnssr.ui.settings.AgentApiConfig
 import com.haoze.dnssr.ui.settings.AgentApiPresetStore
+import com.haoze.dnssr.ui.settings.AgentApiSettingsStore
 import com.haoze.dnssr.ui.settings.ModelPreset
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -37,7 +38,7 @@ fun AgentApiSettingsScreen(onBack: () -> Unit, title: String = "智能体 API") 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var config by remember { mutableStateOf(AppSettings.getAgentApiConfig(context)) }
+    var config by remember { mutableStateOf(AgentApiSettingsStore.getAgentApiConfig(context)) }
     var presets by remember { mutableStateOf(AgentApiPresetStore.getOrderedPresets(context)) }
     var apiKeyVisible by remember { mutableStateOf(false) }
 
@@ -56,7 +57,7 @@ fun AgentApiSettingsScreen(onBack: () -> Unit, title: String = "智能体 API") 
 
     fun updateConfig(newConfig: AgentApiConfig) {
         config = newConfig
-        AppSettings.setAgentApiConfig(context, newConfig)
+        AgentApiSettingsStore.setAgentApiConfig(context, newConfig)
     }
 
     fun reloadPresets() {

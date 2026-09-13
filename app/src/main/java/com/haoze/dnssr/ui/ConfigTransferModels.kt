@@ -37,13 +37,7 @@ data class ConfigImportResult(
     val failedDetails: List<String> = emptyList(),
     val updatedSettingsDetails: List<String> = emptyList(),
     val logs: List<String> = emptyList()
-) {
-    fun message(): String = buildString {
-        append("导入完成：新增 $added 项，跳过 $skipped 项")
-        if (failed > 0) append("，失败 $failed 项")
-        if (subscriptionsAdded > 0) append("。包含 $subscriptionsAdded 个订阅，请进入订阅管理执行规则更新。")
-    }
-}
+)
 
 data class ConfigImportProgress(
     val processed: Int,

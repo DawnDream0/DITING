@@ -8,6 +8,7 @@ import com.haoze.dnssr.data.entity.AllowRuleEntity
 import com.haoze.dnssr.data.entity.GoUrlRuleEntity
 import com.haoze.dnssr.data.entity.GoUrlRuleKind
 import com.haoze.dnssr.data.entity.RuleScope
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.AdGuardRuleParser
 import com.haoze.dnssr.vpn.AllowListManager
 import com.haoze.dnssr.vpn.DefaultWhitelistSeeder
@@ -97,7 +98,7 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
     private val _filter = MutableStateFlow(WhitelistFilter.ALL)
     val filter: StateFlow<WhitelistFilter> = _filter.asStateFlow()
 
-    private val _allowEditDefault = MutableStateFlow(AppSettings.isAllowEditDefaultWhitelist(application))
+    private val _allowEditDefault = MutableStateFlow(AppRulesSettingsStore.isAllowEditDefaultWhitelist(application))
     val allowEditDefault: StateFlow<Boolean> = _allowEditDefault.asStateFlow()
 
     private var activated = false
@@ -116,7 +117,7 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setAllowEditDefault(enabled: Boolean) {
         _allowEditDefault.value = enabled
-        AppSettings.setAllowEditDefaultWhitelist(getApplication(), enabled)
+        AppRulesSettingsStore.setAllowEditDefaultWhitelist(getApplication(), enabled)
     }
 
     fun setFilter(newFilter: WhitelistFilter) {
@@ -137,8 +138,8 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun loadStats() {
         viewModelScope.launch(Dispatchers.IO) {
-            val domainRulesEnabled = AppSettings.isDomainRulesEnabled(getApplication())
-            val addressRulesOperational = AppSettings.isAddressRulesFullyOperational(getApplication())
+            val domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(getApplication())
+            val addressRulesOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(getApplication())
 
             val totalDomains = if (domainRulesEnabled) allowRuleDao.enabledPatternsCount() else 0
             val presetTotal = allowRuleDao.countBySource(DefaultWhitelistSeeder.SOURCE_PRESET)
@@ -169,8 +170,8 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             val query = _searchQuery.value.trim().lowercase()
             val currentFilter = _filter.value
-            val domainRulesEnabled = AppSettings.isDomainRulesEnabled(getApplication())
-            val addressRulesOperational = AppSettings.isAddressRulesFullyOperational(getApplication())
+            val domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(getApplication())
+            val addressRulesOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(getApplication())
 
             val domainEntities = when (currentFilter) {
                 WhitelistFilter.ALL, WhitelistFilter.DOMAIN -> {

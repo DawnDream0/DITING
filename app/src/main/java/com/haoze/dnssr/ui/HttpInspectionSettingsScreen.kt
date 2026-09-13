@@ -27,6 +27,7 @@ import com.haoze.dnssr.ui.components.SettingsNavigationItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,28 +43,28 @@ fun HttpInspectionSettingsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
-    var httpsReady by remember { mutableStateOf(AppSettings.isHttpsInspectionReady(context)) }
+    var httpsReady by remember { mutableStateOf(AppRulesSettingsStore.isHttpsInspectionReady(context)) }
     var enabled by remember {
         mutableStateOf(
-            AppSettings.isHttpInspectionEnabled(context) && httpsReady
+            AppRulesSettingsStore.isHttpInspectionEnabled(context) && httpsReady
         )
     }
-    var addressRulesEnabled by remember { mutableStateOf(AppSettings.isAddressRulesEnabled(context)) }
-    var filterHttp3 by remember { mutableStateOf(AppSettings.isHttp3InspectionEnabled(context)) }
-    var blockEncryptedDns by remember { mutableStateOf(AppSettings.isEncryptedDnsBlockingEnabled(context)) }
+    var addressRulesEnabled by remember { mutableStateOf(AppRulesSettingsStore.isAddressRulesEnabled(context)) }
+    var filterHttp3 by remember { mutableStateOf(AppRulesSettingsStore.isHttp3InspectionEnabled(context)) }
+    var blockEncryptedDns by remember { mutableStateOf(AppRulesSettingsStore.isEncryptedDnsBlockingEnabled(context)) }
     var pendingLinkage by remember { mutableStateOf<DomainRulesLinkageKind?>(null) }
     val scrollState = rememberScrollState()
 
     fun refreshState() {
         scope.launch {
             val ready = withContext(Dispatchers.IO) {
-                AppSettings.checkAndUpdateHttpsInspectionReady(context)
+                AppRulesSettingsStore.checkAndUpdateHttpsInspectionReady(context)
             }
             httpsReady = ready
-            enabled = AppSettings.isHttpInspectionEnabled(context) && ready
-            addressRulesEnabled = AppSettings.isAddressRulesEnabled(context)
-            filterHttp3 = AppSettings.isHttp3InspectionEnabled(context)
-            blockEncryptedDns = AppSettings.isEncryptedDnsBlockingEnabled(context)
+            enabled = AppRulesSettingsStore.isHttpInspectionEnabled(context) && ready
+            addressRulesEnabled = AppRulesSettingsStore.isAddressRulesEnabled(context)
+            filterHttp3 = AppRulesSettingsStore.isHttp3InspectionEnabled(context)
+            blockEncryptedDns = AppRulesSettingsStore.isEncryptedDnsBlockingEnabled(context)
         }
     }
 
@@ -98,7 +99,7 @@ fun HttpInspectionSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SettingsGroupTitle(localizedText("检查范围"))
-            val selectedCount = AppSettings.getHttpInspectionAppPackages(context).size
+            val selectedCount = AppRulesSettingsStore.getHttpInspectionAppPackages(context).size
             SettingsSurfaceGroup(
                 content = listOf(
                     {
@@ -112,12 +113,12 @@ fun HttpInspectionSettingsScreen(
                             checked = enabled && httpsReady,
                             enabled = httpsControlsEnabled,
                             onCheckedChange = { checked ->
-                                if (checked && !AppSettings.isDomainRulesEnabled(context)) {
+                                if (checked && !AppRulesSettingsStore.isDomainRulesEnabled(context)) {
                                     // Coupling constraint: when domain rules are off, enabling inspection requires confirming both are enabled
                                     pendingLinkage = DomainRulesLinkageKind.ENABLE_BOTH
                                 } else {
                                     enabled = checked
-                                    AppSettings.setHttpInspectionEnabled(context, checked)
+                                    AppRulesSettingsStore.setHttpInspectionEnabled(context, checked)
                                     RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
                                 }
                             }
@@ -165,7 +166,7 @@ fun HttpInspectionSettingsScreen(
                             enabled = protocolControlsEnabled,
                             onCheckedChange = { checked ->
                                 addressRulesEnabled = checked
-                                AppSettings.setAddressRulesEnabled(context, checked)
+                                AppRulesSettingsStore.setAddressRulesEnabled(context, checked)
                                 RuntimeDnsSettingsRefresher.syncHttpsRequestRulesIfRunning(context)
                             }
                         )
@@ -187,7 +188,7 @@ fun HttpInspectionSettingsScreen(
                             enabled = protocolControlsEnabled,
                             onCheckedChange = { checked ->
                                 filterHttp3 = checked
-                                AppSettings.setHttp3InspectionEnabled(context, checked)
+                                AppRulesSettingsStore.setHttp3InspectionEnabled(context, checked)
                                 RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
                             }
                         )
@@ -204,7 +205,7 @@ fun HttpInspectionSettingsScreen(
                             enabled = protocolControlsEnabled,
                             onCheckedChange = { checked ->
                                 blockEncryptedDns = checked
-                                AppSettings.setEncryptedDnsBlockingEnabled(context, checked)
+                                AppRulesSettingsStore.setEncryptedDnsBlockingEnabled(context, checked)
                                 RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
                             }
                         )
@@ -227,9 +228,9 @@ fun HttpInspectionSettingsScreen(
             onConfirm = {
                 pendingLinkage = null
                 // Coupled enable: first enable the domain rule master switch and refresh the runtime snapshot, then enable HTTPS inspection
-                AppSettings.setDomainRulesEnabled(context, true)
+                AppRulesSettingsStore.setDomainRulesEnabled(context, true)
                 enabled = true
-                AppSettings.setHttpInspectionEnabled(context, true)
+                AppRulesSettingsStore.setHttpInspectionEnabled(context, true)
                 RuntimeDnsSettingsRefresher.refreshIfRunning(context, "https_inspection_linkage")
                 RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
             },

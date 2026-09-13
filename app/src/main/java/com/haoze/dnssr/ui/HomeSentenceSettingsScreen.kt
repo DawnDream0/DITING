@@ -22,12 +22,13 @@ import com.haoze.dnssr.ui.components.SettingsGroupTitle
 import com.haoze.dnssr.ui.components.SettingsInfoText
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 
 @Composable
 fun HomeSentenceSettingsScreen(onBack: () -> Unit, title: String) {
     val context = LocalContext.current
-    var runningSentence by remember { mutableStateOf(AppSettings.getHomeSentenceRunning(context)) }
-    var stoppedSentence by remember { mutableStateOf(AppSettings.getHomeSentenceStopped(context)) }
+    var runningSentence by remember { mutableStateOf(AppearanceSettingsStore.getHomeSentenceRunning(context)) }
+    var stoppedSentence by remember { mutableStateOf(AppearanceSettingsStore.getHomeSentenceStopped(context)) }
 
     SettingsScaffold(title = localizedText(title), onBack = onBack) { innerPadding ->
         LazyColumn(
@@ -65,7 +66,7 @@ fun HomeSentenceSettingsScreen(onBack: () -> Unit, title: String) {
                             )
                             SettingsActionButton(
                                 onClick = {
-                                    AppSettings.setHomeSentences(context, runningSentence, stoppedSentence)
+                                    AppearanceSettingsStore.setHomeSentences(context, runningSentence, stoppedSentence)
                                     onBack()
                                 },
                                 modifier = Modifier

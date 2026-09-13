@@ -23,6 +23,7 @@ import com.haoze.dnssr.ui.components.SettingsItem
 import com.haoze.dnssr.ui.components.SettingsLoadingContent
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
+import com.haoze.dnssr.ui.settings.ResolutionSettingsStore
 import com.haoze.dnssr.vpn.DnsProtocol
 import com.haoze.dnssr.vpn.DnsProvider
 import kotlinx.coroutines.Dispatchers
@@ -133,7 +134,7 @@ class HomeProviderVisibilityViewModel(application: Application) : AndroidViewMod
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
             val providers = DnsProvider.loadRuntimeProviders(context)
-            val visibility = AppSettings.getHomeProviderVisibility(context)
+            val visibility = ResolutionSettingsStore.getHomeProviderVisibility(context)
             withContext(Dispatchers.Main) {
                 _providers.value = providers
                 _visibility.value = visibility
@@ -182,7 +183,7 @@ class HomeProviderVisibilityViewModel(application: Application) : AndroidViewMod
         val updated = transform(_visibility.value)
         _visibility.value = updated
         viewModelScope.launch(Dispatchers.IO) {
-            AppSettings.setHomeProviderVisibility(getApplication(), updated)
+            ResolutionSettingsStore.setHomeProviderVisibility(getApplication(), updated)
         }
     }
 }

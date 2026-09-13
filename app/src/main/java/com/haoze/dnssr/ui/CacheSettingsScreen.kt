@@ -24,6 +24,7 @@ import com.haoze.dnssr.ui.components.SettingsRadioItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
+import com.haoze.dnssr.ui.settings.DnsCacheSettingsStore
 import com.haoze.dnssr.vpn.cache.DnsCachePreset
 
 @Composable
@@ -34,18 +35,18 @@ fun CacheSettingsScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    var enabled by remember { mutableStateOf(AppSettings.isCacheEnabled(context)) }
-    var preset by remember { mutableStateOf(AppSettings.getDnsCachePreset(context)) }
+    var enabled by remember { mutableStateOf(DnsCacheSettingsStore.isCacheEnabled(context)) }
+    var preset by remember { mutableStateOf(DnsCacheSettingsStore.getDnsCachePreset(context)) }
 
     fun saveEnabled(next: Boolean) {
         enabled = next
-        AppSettings.setDnsCachePolicy(context, preset.toPolicy(enabled = next))
+        DnsCacheSettingsStore.setDnsCachePolicy(context, preset.toPolicy(enabled = next))
         onRuntimeDnsSettingsChanged()
     }
 
     fun savePreset(next: DnsCachePreset) {
         preset = next
-        AppSettings.setDnsCachePolicy(context, next.toPolicy(enabled = enabled))
+        DnsCacheSettingsStore.setDnsCachePolicy(context, next.toPolicy(enabled = enabled))
         onRuntimeDnsSettingsChanged()
     }
 

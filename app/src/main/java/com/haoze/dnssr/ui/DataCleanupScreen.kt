@@ -28,6 +28,8 @@ import com.haoze.dnssr.ui.components.SettingsInfoText
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsTextItem
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.vpn.AllowListManager
 import com.haoze.dnssr.vpn.BlockListManager
 import com.haoze.dnssr.vpn.RewriteRuleManager
@@ -114,7 +116,7 @@ fun DataCleanupScreen(
                         CleanupAction.BOOTSTRAP_WEIGHT -> {
                             BootstrapHealthEngine.flushActive(commit = true)
                             val bootstrapIpIds = BootstrapHealthStore.loadAll(context).keys
-                                .plus(AppSettings.loadBootstrapIpEntries(context).map { it.id })
+                                .plus(BootstrapDnsSettingsStore.loadBootstrapIpEntries(context).map { it.id })
                             BootstrapHealthStore.reset(context, bootstrapIpIds)
                         }
                         CleanupAction.DOMAIN_RULES -> {
@@ -124,7 +126,7 @@ fun DataCleanupScreen(
                             clearAllAddressRules(context)
                         }
                         CleanupAction.SETTINGS_GUIDES -> {
-                            AppSettings.resetAllSettingsGuides(context)
+                            SystemSettingsStore.resetAllSettingsGuides(context)
                         }
                     }
                     withContext(Dispatchers.Main) {

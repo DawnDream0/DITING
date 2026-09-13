@@ -13,13 +13,14 @@ import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
 import androidx.compose.ui.unit.dp
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 
 @Composable
 fun BlockedAppsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val initialEnabled = remember { AppSettings.isBlockedAppsEnabled(context) }
+    val initialEnabled = remember { AppRulesSettingsStore.isBlockedAppsEnabled(context) }
     var enabled by remember { mutableStateOf(initialEnabled) }
-    val initialPackages = remember { AppSettings.getBlockedAppPackages(context) }
+    val initialPackages = remember { AppRulesSettingsStore.getBlockedAppPackages(context) }
     var selectedPackages by remember { mutableStateOf(initialPackages) }
 
     val appListAccess = rememberAppListAccessState { loadInstalledApps(context) }
@@ -43,11 +44,11 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
     }
 
     fun saveBlockedApps() {
-        AppSettings.setBlockedAppsEnabled(context, enabled)
-        AppSettings.setBlockedAppPackages(context, selectedPackages)
-        AppSettings.setExcludedAppPackages(context, AppSettings.getExcludedAppPackages(context) - selectedPackages)
-        AppSettings.removeHttpInspectionAppPackages(context, selectedPackages)
-        AppSettings.setAppAllowlistPackages(context, AppSettings.getAppAllowlistPackages(context) - selectedPackages)
+        AppRulesSettingsStore.setBlockedAppsEnabled(context, enabled)
+        AppRulesSettingsStore.setBlockedAppPackages(context, selectedPackages)
+        AppRulesSettingsStore.setExcludedAppPackages(context, AppRulesSettingsStore.getExcludedAppPackages(context) - selectedPackages)
+        AppRulesSettingsStore.removeHttpInspectionAppPackages(context, selectedPackages)
+        AppRulesSettingsStore.setAppAllowlistPackages(context, AppRulesSettingsStore.getAppAllowlistPackages(context) - selectedPackages)
         RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
         val vpnRunning = com.haoze.dnssr.vpn.DnsVpnService.isRunning(context)
         context.showToast(if (vpnRunning) "已保存，DNS VPN 正在重连" else "已保存，下次启动 DNS VPN 时生效")
@@ -60,13 +61,13 @@ fun BlockedAppsScreen(onBack: () -> Unit) {
         selectedPackages = selectedPackages,
         onSelectedPackagesChange = { selectedPackages = it },
         initialFilter = AppListFilter.entries.firstOrNull {
-            it.name == AppSettings.getBlockedAppsFilter(context)
+            it.name == AppRulesSettingsStore.getBlockedAppsFilter(context)
         } ?: AppListFilter.USER,
         initialSort = AppListSort.entries.firstOrNull {
-            it.name == AppSettings.getBlockedAppsSort(context)
+            it.name == AppRulesSettingsStore.getBlockedAppsSort(context)
         } ?: AppListSort.LABEL_ASC,
-        onFilterChanged = { AppSettings.setBlockedAppsFilter(context, it.name) },
-        onSortChanged = { AppSettings.setBlockedAppsSort(context, it.name) },
+        onFilterChanged = { AppRulesSettingsStore.setBlockedAppsFilter(context, it.name) },
+        onSortChanged = { AppRulesSettingsStore.setBlockedAppsSort(context, it.name) },
         showSelectionActions = true,
         isDirty = selectedPackages != initialPackages || enabled != initialEnabled,
         onSave = { saveBlockedApps() },

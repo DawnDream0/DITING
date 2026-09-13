@@ -6,9 +6,9 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import androidx.compose.ui.graphics.toArgb
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.AppThemeMode
 import com.haoze.dnssr.ui.localizedText
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import com.haoze.dnssr.ui.theme.ThemeColorStyle
 
 /**
@@ -70,7 +70,7 @@ object FloatingLogTheme {
     }
 
     fun getPalette(context: Context): OverlayThemePalette {
-        val themeMode = AppSettings.getAppThemeMode(context)
+        val themeMode = AppearanceSettingsStore.getAppThemeMode(context)
         val isDark = when (themeMode) {
             AppThemeMode.LIGHT -> false
             AppThemeMode.DARK -> true
@@ -79,7 +79,7 @@ object FloatingLogTheme {
                 nightModeFlags == Configuration.UI_MODE_NIGHT_YES
             }
         }
-        val colorStyle = AppSettings.getThemeColorStyle(context)
+        val colorStyle = AppearanceSettingsStore.getThemeColorStyle(context)
         val primaryColor = getPrimaryColor(context, isDark, colorStyle)
         val tertiaryColor = getTertiaryColor(context, isDark, colorStyle)
 

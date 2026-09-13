@@ -46,6 +46,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.haoze.dnssr.ui.components.SettingsCornerShape
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import com.haoze.dnssr.vpn.DnsProvider
 
 @Composable
@@ -67,25 +68,25 @@ internal fun MainContent(
     val resolutionMode by viewModel.resolutionMode.collectAsStateWithLifecycle()
     val raceProviderIds by viewModel.raceProviderIds.collectAsStateWithLifecycle()
     val homeProviderVisibility by viewModel.homeProviderVisibility.collectAsStateWithLifecycle()
-    var powerButtonOpacity by remember { mutableStateOf(AppSettings.getHomePowerButtonOpacity(context)) }
-    var providerSelectorOpacity by remember { mutableStateOf(AppSettings.getHomeProviderSelectorOpacity(context)) }
-    var modeButtonOpacity by remember { mutableStateOf(AppSettings.getHomeModeButtonOpacity(context)) }
-    var poemOpacity by remember { mutableStateOf(AppSettings.getHomePoemOpacity(context)) }
-    var dnsDetailOpacity by remember { mutableStateOf(AppSettings.getHomeDnsDetailOpacity(context)) }
-    var runningSentence by remember { mutableStateOf(AppSettings.getHomeSentenceRunning(context)) }
-    var stoppedSentence by remember { mutableStateOf(AppSettings.getHomeSentenceStopped(context)) }
+    var powerButtonOpacity by remember { mutableStateOf(AppearanceSettingsStore.getHomePowerButtonOpacity(context)) }
+    var providerSelectorOpacity by remember { mutableStateOf(AppearanceSettingsStore.getHomeProviderSelectorOpacity(context)) }
+    var modeButtonOpacity by remember { mutableStateOf(AppearanceSettingsStore.getHomeModeButtonOpacity(context)) }
+    var poemOpacity by remember { mutableStateOf(AppearanceSettingsStore.getHomePoemOpacity(context)) }
+    var dnsDetailOpacity by remember { mutableStateOf(AppearanceSettingsStore.getHomeDnsDetailOpacity(context)) }
+    var runningSentence by remember { mutableStateOf(AppearanceSettingsStore.getHomeSentenceRunning(context)) }
+    var stoppedSentence by remember { mutableStateOf(AppearanceSettingsStore.getHomeSentenceStopped(context)) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.loadProviders()
-                powerButtonOpacity = AppSettings.getHomePowerButtonOpacity(context)
-                providerSelectorOpacity = AppSettings.getHomeProviderSelectorOpacity(context)
-                modeButtonOpacity = AppSettings.getHomeModeButtonOpacity(context)
-                poemOpacity = AppSettings.getHomePoemOpacity(context)
-                dnsDetailOpacity = AppSettings.getHomeDnsDetailOpacity(context)
-                runningSentence = AppSettings.getHomeSentenceRunning(context)
-                stoppedSentence = AppSettings.getHomeSentenceStopped(context)
+                powerButtonOpacity = AppearanceSettingsStore.getHomePowerButtonOpacity(context)
+                providerSelectorOpacity = AppearanceSettingsStore.getHomeProviderSelectorOpacity(context)
+                modeButtonOpacity = AppearanceSettingsStore.getHomeModeButtonOpacity(context)
+                poemOpacity = AppearanceSettingsStore.getHomePoemOpacity(context)
+                dnsDetailOpacity = AppearanceSettingsStore.getHomeDnsDetailOpacity(context)
+                runningSentence = AppearanceSettingsStore.getHomeSentenceRunning(context)
+                stoppedSentence = AppearanceSettingsStore.getHomeSentenceStopped(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

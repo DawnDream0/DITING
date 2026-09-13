@@ -1,7 +1,7 @@
 package com.haoze.dnssr.vpn
 
 import android.content.Context
-import com.haoze.dnssr.ui.AppSettings
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
@@ -21,8 +21,8 @@ class BootstrapSelector(
     private val hostCache = HashMap<String, CachedBootstrapResolution>()
 
     suspend fun resolveHost(host: String): List<InetAddress> = withContext(Dispatchers.IO) {
-        val entries = AppSettings.loadEnabledBootstrapIpEntries(context)
-        if (!AppSettings.isBootstrapEnabled(context) || entries.isEmpty()) {
+        val entries = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(context)
+        if (!BootstrapDnsSettingsStore.isBootstrapEnabled(context) || entries.isEmpty()) {
             return@withContext emptyList()
         }
         val normalizedHost = host.lowercase()

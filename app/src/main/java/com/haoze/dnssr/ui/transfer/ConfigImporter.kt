@@ -9,7 +9,6 @@ import com.haoze.dnssr.data.entity.SubscriptionGroupEntity
 import com.haoze.dnssr.notification.NotificationSettingsStore
 import com.haoze.dnssr.ui.AppLanguageManager
 import com.haoze.dnssr.ui.AppLanguageMode
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.AppThemeMode
 import com.haoze.dnssr.ui.ConfigImportProgress
 import com.haoze.dnssr.ui.ConfigImportResult
@@ -19,6 +18,13 @@ import com.haoze.dnssr.ui.Ipv6Mode
 import com.haoze.dnssr.ui.OutboundProxyConfig
 import com.haoze.dnssr.ui.OutboundProxyProtocol
 import com.haoze.dnssr.ui.RuntimeDnsSettingsRefresher
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
+import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
+import com.haoze.dnssr.ui.settings.DnsCacheSettingsStore
+import com.haoze.dnssr.ui.settings.OutboundProxySettingsStore
+import com.haoze.dnssr.ui.settings.ResolutionSettingsStore
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 import com.haoze.dnssr.ui.theme.ThemeColorStyle
 import com.haoze.dnssr.vpn.AdGuardRuleParser
 import com.haoze.dnssr.vpn.AllowListManager
@@ -148,7 +154,7 @@ class ConfigImporter(private val context: Context) {
             }
         }
         config.resolutionMode?.let { mode ->
-            AppSettings.setDnsResolutionMode(context, mode)
+            ResolutionSettingsStore.setDnsResolutionMode(context, mode)
             val detail = "DNS 解析模式 -> ${mode.displayName}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
@@ -156,7 +162,7 @@ class ConfigImporter(private val context: Context) {
         if (config.raceProviderRefs.isNotEmpty()) {
             val resolvedIds = config.raceProviderRefs.mapNotNull(::resolveProviderRef).toSet()
             if (resolvedIds.isNotEmpty()) {
-                AppSettings.setRaceProviderIds(context, resolvedIds)
+                ResolutionSettingsStore.setRaceProviderIds(context, resolvedIds)
                 val detail = "抢答模式 DNS 节点 (${resolvedIds.size} 个)"
                 updatedSettingsDetails.add(detail)
                 logs.add("更新 $detail")
@@ -165,7 +171,7 @@ class ConfigImporter(private val context: Context) {
         if (config.smartPredictionProviderRefs.isNotEmpty()) {
             val resolvedIds = config.smartPredictionProviderRefs.mapNotNull(::resolveProviderRef).toSet()
             if (resolvedIds.isNotEmpty()) {
-                AppSettings.setSmartPredictionProviderIds(context, resolvedIds)
+                ResolutionSettingsStore.setSmartPredictionProviderIds(context, resolvedIds)
                 val detail = "智能预测 DNS 节点 (${resolvedIds.size} 个)"
                 updatedSettingsDetails.add(detail)
                 logs.add("更新 $detail")
@@ -174,7 +180,7 @@ class ConfigImporter(private val context: Context) {
         if (config.parallelRaceProviderRefs.isNotEmpty()) {
             val resolvedIds = config.parallelRaceProviderRefs.mapNotNull(::resolveProviderRef).toSet()
             if (resolvedIds.isNotEmpty()) {
-                AppSettings.setParallelRaceProviderIds(context, resolvedIds)
+                ResolutionSettingsStore.setParallelRaceProviderIds(context, resolvedIds)
                 val detail = "并行抢答 DNS 节点 (${resolvedIds.size} 个)"
                 updatedSettingsDetails.add(detail)
                 logs.add("更新 $detail")
@@ -183,14 +189,14 @@ class ConfigImporter(private val context: Context) {
         if (config.primaryBackupProviderRefs.isNotEmpty()) {
             val resolvedIds = config.primaryBackupProviderRefs.mapNotNull(::resolveProviderRef)
             if (resolvedIds.isNotEmpty()) {
-                AppSettings.setPrimaryBackupProviderIds(context, resolvedIds)
+                ResolutionSettingsStore.setPrimaryBackupProviderIds(context, resolvedIds)
                 val detail = "主备模式 DNS 节点 (${resolvedIds.size} 个)"
                 updatedSettingsDetails.add(detail)
                 logs.add("更新 $detail")
             }
         }
         config.presetDnsService?.let { service ->
-            AppSettings.setPresetDnsService(context, service)
+            ResolutionSettingsStore.setPresetDnsService(context, service)
             val detail = "预置 DNS 服务 -> ${service.displayName}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
@@ -198,7 +204,7 @@ class ConfigImporter(private val context: Context) {
         config.homeProviderVisibility?.let { visibility ->
             val hiddenIds = visibility.hiddenProviderRefs.mapNotNull(::resolveProviderRef).toSet()
             val visibleIds = visibility.visibleProviderRefs.mapNotNull(::resolveProviderRef).toSet()
-            AppSettings.setHomeProviderVisibility(
+            ResolutionSettingsStore.setHomeProviderVisibility(
                 context,
                 HomeProviderVisibility(
                     visibleProtocols = visibility.visibleProtocols,
@@ -211,7 +217,7 @@ class ConfigImporter(private val context: Context) {
             logs.add("更新 $detail")
         }
         config.raceTestDomain?.takeIf { it.isNotBlank() }?.let { domain ->
-            AppSettings.setRaceTestDomain(context, domain)
+            ResolutionSettingsStore.setRaceTestDomain(context, domain)
             val detail = "抢答测速域名 -> $domain"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
@@ -219,12 +225,12 @@ class ConfigImporter(private val context: Context) {
 
         // Bootstrap IPs
         if (config.bootstrapEnabled != null) {
-            AppSettings.setBootstrapEnabled(context, config.bootstrapEnabled)
+            BootstrapDnsSettingsStore.setBootstrapEnabled(context, config.bootstrapEnabled)
             val detail = "Bootstrap IP 引导 -> ${if (config.bootstrapEnabled) "已启用" else "已禁用"}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
         }
-        val existingIps = AppSettings.loadBootstrapIpEntries(context)
+        val existingIps = BootstrapDnsSettingsStore.loadBootstrapIpEntries(context)
             .filterNot { it.isPreset }.map { it.ip.lowercase() }.toMutableSet()
         config.bootstrapIps.forEach { entry ->
             val item = "Bootstrap IP：${entry.name}"
@@ -234,13 +240,13 @@ class ConfigImporter(private val context: Context) {
                 skippedDetails.add(detail)
                 complete(item, "跳过 $detail (已存在)")
             } else {
-                val saved = AppSettings.addCustomBootstrapIp(context, entry.name, entry.ip)
+                val saved = BootstrapDnsSettingsStore.addCustomBootstrapIp(context, entry.name, entry.ip)
                 if (saved == null) {
                     failed++
                     failedDetails.add(detail)
                     complete(item, "添加 $detail 失败")
                 } else {
-                    AppSettings.setBootstrapIpEnabled(context, saved.id, entry.enabled)
+                    BootstrapDnsSettingsStore.setBootstrapIpEnabled(context, saved.id, entry.enabled)
                     added++
                     addedDetails.add(detail)
                     complete(item, "新增 $detail")
@@ -249,9 +255,9 @@ class ConfigImporter(private val context: Context) {
         }
 
         if (config.bootstrapPresetIds != null) {
-            val validPresets = AppSettings.getBootstrapPresetIds(context)
+            val validPresets = BootstrapDnsSettingsStore.getBootstrapPresetIds(context)
             if (validPresets != config.bootstrapPresetIds) {
-                AppSettings.setBootstrapPresetIds(context, config.bootstrapPresetIds)
+                BootstrapDnsSettingsStore.setBootstrapPresetIds(context, config.bootstrapPresetIds)
                 val detail = "预置 Bootstrap 节点状态"
                 updatedSettingsDetails.add(detail)
                 logs.add("更新 $detail")
@@ -261,13 +267,13 @@ class ConfigImporter(private val context: Context) {
 
         if (config.dnsCache != null) {
             val cache = config.dnsCache
-            AppSettings.setCacheEnabled(context, cache.enabled)
+            DnsCacheSettingsStore.setCacheEnabled(context, cache.enabled)
             cache.preset?.let { presetVal ->
                 DnsCachePreset.fromStorageValue(presetVal)?.let { preset ->
-                    AppSettings.setDnsCachePreset(context, preset)
+                    DnsCacheSettingsStore.setDnsCachePreset(context, preset)
                 }
             }
-            val currentPolicy = AppSettings.getDnsCachePolicy(context)
+            val currentPolicy = DnsCacheSettingsStore.getDnsCachePolicy(context)
             val updatedPolicy = currentPolicy.copy(
                 enabled = cache.enabled,
                 mode = cache.mode?.let { DnsCacheMode.fromStorageValue(it) } ?: currentPolicy.mode,
@@ -278,7 +284,7 @@ class ConfigImporter(private val context: Context) {
                 staleFallbackEnabled = cache.staleFallbackEnabled ?: currentPolicy.staleFallbackEnabled,
                 staleFallbackSeconds = cache.staleFallbackSeconds ?: currentPolicy.staleFallbackSeconds
             )
-            AppSettings.setDnsCachePolicy(context, updatedPolicy)
+            DnsCacheSettingsStore.setDnsCachePolicy(context, updatedPolicy)
             dnsCacheUpdated = true
             val detail = "DNS 缓存策略"
             updatedSettingsDetails.add(detail)
@@ -288,7 +294,7 @@ class ConfigImporter(private val context: Context) {
 
         if (config.outboundProxy != null) {
             val proxy = config.outboundProxy
-            AppSettings.setOutboundProxyConfig(
+            OutboundProxySettingsStore.setOutboundProxyConfig(
                 context,
                 OutboundProxyConfig(
                     enabled = proxy.enabled,
@@ -521,12 +527,12 @@ class ConfigImporter(private val context: Context) {
         // App lists - preserve packages across devices without dropping uninstalled ones
         if (config.excludedApps.isNotEmpty()) {
             val validPackages = config.excludedApps.filter { it.isNotBlank() && !it.contains(" ") }.toSet()
-            val existingPackages = AppSettings.getExcludedAppPackages(context)
+            val existingPackages = AppRulesSettingsStore.getExcludedAppPackages(context)
             val newPackages = validPackages - existingPackages
-            AppSettings.setExcludedAppPackages(context, existingPackages + validPackages)
-            AppSettings.removeHttpInspectionAppPackages(context, validPackages)
-            AppSettings.setBlockedAppPackages(context, AppSettings.getBlockedAppPackages(context) - validPackages)
-            AppSettings.setAppAllowlistPackages(context, AppSettings.getAppAllowlistPackages(context) - validPackages)
+            AppRulesSettingsStore.setExcludedAppPackages(context, existingPackages + validPackages)
+            AppRulesSettingsStore.removeHttpInspectionAppPackages(context, validPackages)
+            AppRulesSettingsStore.setBlockedAppPackages(context, AppRulesSettingsStore.getBlockedAppPackages(context) - validPackages)
+            AppRulesSettingsStore.setAppAllowlistPackages(context, AppRulesSettingsStore.getAppAllowlistPackages(context) - validPackages)
             excludedAppsUpdated = newPackages.isNotEmpty()
             added += newPackages.size
             skipped += validPackages.size - newPackages.size
@@ -542,12 +548,12 @@ class ConfigImporter(private val context: Context) {
             val validPackages = config.blockedApps
                 .filter { it.isNotBlank() && !it.contains(" ") && it != context.packageName }
                 .toSet()
-            val existingPackages = AppSettings.getBlockedAppPackages(context)
+            val existingPackages = AppRulesSettingsStore.getBlockedAppPackages(context)
             val newPackages = validPackages - existingPackages
-            AppSettings.setBlockedAppPackages(context, existingPackages + validPackages)
-            AppSettings.setExcludedAppPackages(context, AppSettings.getExcludedAppPackages(context) - validPackages)
-            AppSettings.removeHttpInspectionAppPackages(context, validPackages)
-            AppSettings.setAppAllowlistPackages(context, AppSettings.getAppAllowlistPackages(context) - validPackages)
+            AppRulesSettingsStore.setBlockedAppPackages(context, existingPackages + validPackages)
+            AppRulesSettingsStore.setExcludedAppPackages(context, AppRulesSettingsStore.getExcludedAppPackages(context) - validPackages)
+            AppRulesSettingsStore.removeHttpInspectionAppPackages(context, validPackages)
+            AppRulesSettingsStore.setAppAllowlistPackages(context, AppRulesSettingsStore.getAppAllowlistPackages(context) - validPackages)
             blockedAppsUpdated = newPackages.isNotEmpty()
             added += newPackages.size
             skipped += validPackages.size - newPackages.size
@@ -559,8 +565,8 @@ class ConfigImporter(private val context: Context) {
             }
         }
 
-        if (AppSettings.isBlockedAppsEnabled(context) != config.blockedAppsEnabled) {
-            AppSettings.setBlockedAppsEnabled(context, config.blockedAppsEnabled)
+        if (AppRulesSettingsStore.isBlockedAppsEnabled(context) != config.blockedAppsEnabled) {
+            AppRulesSettingsStore.setBlockedAppsEnabled(context, config.blockedAppsEnabled)
             blockedAppsUpdated = true
             val detail = "禁止联网应用开关 -> ${if (config.blockedAppsEnabled) "已启用" else "已禁用"}"
             updatedSettingsDetails.add(detail)
@@ -580,7 +586,7 @@ class ConfigImporter(private val context: Context) {
         }
 
         if (effectiveRules.isNotEmpty()) {
-            val currentRules = AppSettings.getAppAllowlistRuleMap(context).toMutableMap()
+            val currentRules = AppRulesSettingsStore.getAppAllowlistRuleMap(context).toMutableMap()
             var rulesModified = false
             effectiveRules.forEach { (pkg, domains) ->
                 val existing = currentRules[pkg].orEmpty()
@@ -599,17 +605,17 @@ class ConfigImporter(private val context: Context) {
                 }
             }
             if (rulesModified) {
-                AppSettings.setAppAllowlistRuleMap(context, currentRules)
+                AppRulesSettingsStore.setAppAllowlistRuleMap(context, currentRules)
                 val allAllowlistPackages = currentRules.keys
-                AppSettings.setExcludedAppPackages(context, AppSettings.getExcludedAppPackages(context) - allAllowlistPackages)
-                AppSettings.setBlockedAppPackages(context, AppSettings.getBlockedAppPackages(context) - allAllowlistPackages)
-                AppSettings.removeHttpInspectionAppPackages(context, allAllowlistPackages)
+                AppRulesSettingsStore.setExcludedAppPackages(context, AppRulesSettingsStore.getExcludedAppPackages(context) - allAllowlistPackages)
+                AppRulesSettingsStore.setBlockedAppPackages(context, AppRulesSettingsStore.getBlockedAppPackages(context) - allAllowlistPackages)
+                AppRulesSettingsStore.removeHttpInspectionAppPackages(context, allAllowlistPackages)
                 appAllowlistUpdated = true
             }
         }
 
         if (config.appAllowlistEnabled) {
-            AppSettings.setAppAllowlistEnabled(context, true)
+            AppRulesSettingsStore.setAppAllowlistEnabled(context, true)
             appAllowlistUpdated = true
             val detail = "单应用域名放行开关 -> 已启用"
             updatedSettingsDetails.add(detail)
@@ -619,12 +625,12 @@ class ConfigImporter(private val context: Context) {
         if (config.httpInspection != null) {
             val insp = config.httpInspection
             val validPackages = insp.appPackages.filter { it.isNotBlank() && !it.contains(" ") && it != context.packageName }.toSet()
-            AppSettings.setHttpInspectionAppPackages(context, validPackages)
-            AppSettings.setHttpInspectionEnabled(context, insp.enabled)
-            AppSettings.setHttp3InspectionEnabled(context, insp.http3Enabled)
-            AppSettings.setExcludedAppPackages(context, AppSettings.getExcludedAppPackages(context) - validPackages)
-            AppSettings.setBlockedAppPackages(context, AppSettings.getBlockedAppPackages(context) - validPackages)
-            AppSettings.setAppAllowlistPackages(context, AppSettings.getAppAllowlistPackages(context) - validPackages)
+            AppRulesSettingsStore.setHttpInspectionAppPackages(context, validPackages)
+            AppRulesSettingsStore.setHttpInspectionEnabled(context, insp.enabled)
+            AppRulesSettingsStore.setHttp3InspectionEnabled(context, insp.http3Enabled)
+            AppRulesSettingsStore.setExcludedAppPackages(context, AppRulesSettingsStore.getExcludedAppPackages(context) - validPackages)
+            AppRulesSettingsStore.setBlockedAppPackages(context, AppRulesSettingsStore.getBlockedAppPackages(context) - validPackages)
+            AppRulesSettingsStore.setAppAllowlistPackages(context, AppRulesSettingsStore.getAppAllowlistPackages(context) - validPackages)
             httpInspectionUpdated = true
             val detail = "HTTPS 抓包配置 (${validPackages.size} 个应用) -> ${if (insp.enabled) "已启用" else "已禁用"}"
             updatedSettingsDetails.add(detail)
@@ -632,40 +638,40 @@ class ConfigImporter(private val context: Context) {
             complete("HTTPS 抓包配置", "已应用 HTTPS 抓包配置")
         }
 
-        if (config.domainRulesEnabled != null && AppSettings.isDomainRulesEnabled(context) != config.domainRulesEnabled) {
-            AppSettings.setDomainRulesEnabled(context, config.domainRulesEnabled)
+        if (config.domainRulesEnabled != null && AppRulesSettingsStore.isDomainRulesEnabled(context) != config.domainRulesEnabled) {
+            AppRulesSettingsStore.setDomainRulesEnabled(context, config.domainRulesEnabled)
             val detail = "域名规则开关 -> ${if (config.domainRulesEnabled) "已启用" else "已禁用"}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
         }
         // Linkage constraint: if an imported config has HTTPS inspection on while domain rules are off, force-align to both enabled
-        if (AppSettings.isHttpInspectionEnabled(context) && !AppSettings.isDomainRulesEnabled(context)) {
-            AppSettings.setDomainRulesEnabled(context, true)
+        if (AppRulesSettingsStore.isHttpInspectionEnabled(context) && !AppRulesSettingsStore.isDomainRulesEnabled(context)) {
+            AppRulesSettingsStore.setDomainRulesEnabled(context, true)
             val detail = "域名规则开关 -> 已启用（与 HTTPS 检查联动）"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
         }
-        if (config.addressRulesEnabled != null && AppSettings.isAddressRulesEnabled(context) != config.addressRulesEnabled) {
-            AppSettings.setAddressRulesEnabled(context, config.addressRulesEnabled)
+        if (config.addressRulesEnabled != null && AppRulesSettingsStore.isAddressRulesEnabled(context) != config.addressRulesEnabled) {
+            AppRulesSettingsStore.setAddressRulesEnabled(context, config.addressRulesEnabled)
             val detail = "地址规则开关 -> ${if (config.addressRulesEnabled) "已启用" else "已禁用"}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
         }
-        if (config.encryptedDnsBlockingEnabled != null && AppSettings.isEncryptedDnsBlockingEnabled(context) != config.encryptedDnsBlockingEnabled) {
-            AppSettings.setEncryptedDnsBlockingEnabled(context, config.encryptedDnsBlockingEnabled)
+        if (config.encryptedDnsBlockingEnabled != null && AppRulesSettingsStore.isEncryptedDnsBlockingEnabled(context) != config.encryptedDnsBlockingEnabled) {
+            AppRulesSettingsStore.setEncryptedDnsBlockingEnabled(context, config.encryptedDnsBlockingEnabled)
             val detail = "加密 DNS 拦截开关 -> ${if (config.encryptedDnsBlockingEnabled) "已启用" else "已禁用"}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
         }
         if (config.blockResponseMode != null) {
-            AppSettings.setBlockResponseMode(context, config.blockResponseMode)
+            AppRulesSettingsStore.setBlockResponseMode(context, config.blockResponseMode)
             val detail = "拦截响应策略 -> ${config.blockResponseMode.storageValue}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
         }
         if (config.dynamicBlockResponse != null) {
             val dyn = config.dynamicBlockResponse
-            AppSettings.setDynamicBlockResponseConfig(
+            AppRulesSettingsStore.setDynamicBlockResponseConfig(
                 context,
                 DynamicBlockResponseConfig(
                     enabled = dyn.enabled,
@@ -679,7 +685,7 @@ class ConfigImporter(private val context: Context) {
             logs.add("设置 $detail")
         }
         if (config.allowEditDefaultWhitelist != null) {
-            AppSettings.setAllowEditDefaultWhitelist(context, config.allowEditDefaultWhitelist)
+            AppRulesSettingsStore.setAllowEditDefaultWhitelist(context, config.allowEditDefaultWhitelist)
             val detail = "允许编辑默认白名单 -> ${if (config.allowEditDefaultWhitelist) "是" else "否"}"
             updatedSettingsDetails.add(detail)
             logs.add("设置 $detail")
@@ -695,16 +701,16 @@ class ConfigImporter(private val context: Context) {
 
         if (config.appearance != null) {
             val app = config.appearance
-            app.appThemeMode?.let { AppSettings.setAppThemeMode(context, AppThemeMode.fromStorageValue(it)) }
-            app.themeColorStyle?.let { AppSettings.setThemeColorStyle(context, ThemeColorStyle.fromStorageValue(it)) }
-            app.homeComponentOpacity?.let { AppSettings.setHomeComponentOpacity(context, it) }
-            app.homePowerButtonOpacity?.let { AppSettings.setHomePowerButtonOpacity(context, it) }
-            app.homeProviderSelectorOpacity?.let { AppSettings.setHomeProviderSelectorOpacity(context, it) }
-            app.homeModeButtonOpacity?.let { AppSettings.setHomeModeButtonOpacity(context, it) }
-            app.homePoemOpacity?.let { AppSettings.setHomePoemOpacity(context, it) }
-            app.homeDnsDetailOpacity?.let { AppSettings.setHomeDnsDetailOpacity(context, it) }
+            app.appThemeMode?.let { AppearanceSettingsStore.setAppThemeMode(context, AppThemeMode.fromStorageValue(it)) }
+            app.themeColorStyle?.let { AppearanceSettingsStore.setThemeColorStyle(context, ThemeColorStyle.fromStorageValue(it)) }
+            app.homeComponentOpacity?.let { AppearanceSettingsStore.setHomeComponentOpacity(context, it) }
+            app.homePowerButtonOpacity?.let { AppearanceSettingsStore.setHomePowerButtonOpacity(context, it) }
+            app.homeProviderSelectorOpacity?.let { AppearanceSettingsStore.setHomeProviderSelectorOpacity(context, it) }
+            app.homeModeButtonOpacity?.let { AppearanceSettingsStore.setHomeModeButtonOpacity(context, it) }
+            app.homePoemOpacity?.let { AppearanceSettingsStore.setHomePoemOpacity(context, it) }
+            app.homeDnsDetailOpacity?.let { AppearanceSettingsStore.setHomeDnsDetailOpacity(context, it) }
             if (app.homeSentenceRunning != null && app.homeSentenceStopped != null) {
-                AppSettings.setHomeSentences(context, app.homeSentenceRunning, app.homeSentenceStopped)
+                AppearanceSettingsStore.setHomeSentences(context, app.homeSentenceRunning, app.homeSentenceStopped)
             }
             appearanceUpdated = true
             val detail = "外观与主题个性化"
@@ -715,17 +721,17 @@ class ConfigImporter(private val context: Context) {
 
         if (config.systemSettings != null) {
             val sys = config.systemSettings
-            sys.bypassLanEnabled?.let { AppSettings.setBypassLanEnabled(context, it) }
-            sys.ipv6Mode?.let { AppSettings.setIpv6Mode(context, Ipv6Mode.fromStorageValue(it)) }
-            sys.hideFromRecentsEnabled?.let { AppSettings.setHideFromRecentsEnabled(context, it) }
-            sys.logRetentionDays?.let { AppSettings.setLogRetentionDays(context, it) }
-            sys.dnsLogMode?.let { AppSettings.setDnsLogMode(context, DnsLogMode.fromStorageValue(it)) }
-            sys.floatingLogEnabled?.let { AppSettings.setFloatingLogEnabled(context, it) }
-            sys.floatingLogPanelSize?.let { AppSettings.setFloatingLogPanelSize(context, it) }
-            sys.appTrafficStatsEnabled?.let { AppSettings.setAppTrafficStatsEnabled(context, it) }
-            sys.trafficStatsRetentionDays?.let { AppSettings.setTrafficStatsRetentionDays(context, it) }
-            sys.trafficStatsHideSystemApps?.let { AppSettings.setTrafficStatsHideSystemApps(context, it) }
-            sys.disableStartupUpdateCheck?.let { AppSettings.setStartupUpdateCheckDisabled(context, it) }
+            sys.bypassLanEnabled?.let { SystemSettingsStore.setBypassLanEnabled(context, it) }
+            sys.ipv6Mode?.let { SystemSettingsStore.setIpv6Mode(context, Ipv6Mode.fromStorageValue(it)) }
+            sys.hideFromRecentsEnabled?.let { SystemSettingsStore.setHideFromRecentsEnabled(context, it) }
+            sys.logRetentionDays?.let { SystemSettingsStore.setLogRetentionDays(context, it) }
+            sys.dnsLogMode?.let { SystemSettingsStore.setDnsLogMode(context, DnsLogMode.fromStorageValue(it)) }
+            sys.floatingLogEnabled?.let { SystemSettingsStore.setFloatingLogEnabled(context, it) }
+            sys.floatingLogPanelSize?.let { SystemSettingsStore.setFloatingLogPanelSize(context, it) }
+            sys.appTrafficStatsEnabled?.let { SystemSettingsStore.setAppTrafficStatsEnabled(context, it) }
+            sys.trafficStatsRetentionDays?.let { SystemSettingsStore.setTrafficStatsRetentionDays(context, it) }
+            sys.trafficStatsHideSystemApps?.let { SystemSettingsStore.setTrafficStatsHideSystemApps(context, it) }
+            sys.disableStartupUpdateCheck?.let { SystemSettingsStore.setStartupUpdateCheckDisabled(context, it) }
             sys.appLanguageMode?.let { AppLanguageManager.setMode(context, AppLanguageMode.fromStorageValue(it)) }
             sys.persistentNotificationEnabled?.let { NotificationSettingsStore.setPersistentNotificationEnabled(context, it) }
             sys.trafficSpeedEnabled?.let { NotificationSettingsStore.setTrafficSpeedEnabled(context, it) }

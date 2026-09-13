@@ -27,6 +27,7 @@ import com.haoze.dnssr.ui.components.SettingsRadioItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
+import com.haoze.dnssr.ui.settings.SystemSettingsStore
 
 @Composable
 fun ForegroundBackgroundSettingsScreen(
@@ -37,13 +38,13 @@ fun ForegroundBackgroundSettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var hideFromRecentsEnabled by remember {
-        mutableStateOf(AppSettings.isHideFromRecentsEnabled(context))
+        mutableStateOf(SystemSettingsStore.isHideFromRecentsEnabled(context))
     }
     var bypassLanEnabled by remember {
-        mutableStateOf(AppSettings.isBypassLanEnabled(context))
+        mutableStateOf(SystemSettingsStore.isBypassLanEnabled(context))
     }
     var ipv6Mode by remember {
-        mutableStateOf(AppSettings.getIpv6Mode(context))
+        mutableStateOf(SystemSettingsStore.getIpv6Mode(context))
     }
     var batteryOptimizationIgnored by remember(context) {
         mutableStateOf(isBatteryOptimizationIgnored(context))
@@ -51,18 +52,18 @@ fun ForegroundBackgroundSettingsScreen(
 
     fun saveIpv6Mode(mode: Ipv6Mode) {
         ipv6Mode = mode
-        AppSettings.setIpv6Mode(context, mode)
+        SystemSettingsStore.setIpv6Mode(context, mode)
     }
 
     fun saveHideFromRecents(enabled: Boolean) {
         hideFromRecentsEnabled = enabled
-        AppSettings.setHideFromRecentsEnabled(context, enabled)
+        SystemSettingsStore.setHideFromRecentsEnabled(context, enabled)
         onHideFromRecentsChanged(enabled)
     }
 
     fun saveBypassLan(enabled: Boolean) {
         bypassLanEnabled = enabled
-        AppSettings.setBypassLanEnabled(context, enabled)
+        SystemSettingsStore.setBypassLanEnabled(context, enabled)
     }
 
     fun handleBatteryOptimizationClick() {

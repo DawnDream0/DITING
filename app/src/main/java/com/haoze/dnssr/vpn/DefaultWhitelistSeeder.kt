@@ -5,8 +5,8 @@ import android.util.Log
 import androidx.core.content.pm.PackageInfoCompat
 import com.haoze.dnssr.data.AppDatabase
 import com.haoze.dnssr.data.entity.AllowRuleEntity
-import com.haoze.dnssr.ui.AppSettings
 import com.haoze.dnssr.ui.RuntimeDnsSettingsRefresher
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -29,19 +29,19 @@ object DefaultWhitelistSeeder {
      */
     suspend fun ensureInitialized(context: Context, database: AppDatabase) = withContext(Dispatchers.IO) {
         val currentVersion = currentVersionCode(context)
-        if (AppSettings.isDefaultWhitelistInitialized(context) &&
-            AppSettings.getDefaultWhitelistSeededVersion(context) == currentVersion
+        if (AppRulesSettingsStore.isDefaultWhitelistInitialized(context) &&
+            AppRulesSettingsStore.getDefaultWhitelistSeededVersion(context) == currentVersion
         ) {
             return@withContext
         }
-        if (AppSettings.isDefaultWhitelistInitialized(context)) {
+        if (AppRulesSettingsStore.isDefaultWhitelistInitialized(context)) {
             Log.i(TAG, "App version changed to $currentVersion, resetting preset whitelist once...")
         } else {
             Log.i(TAG, "Initializing default preset whitelist...")
         }
         seed(context, database, forceReset = true)
-        AppSettings.setDefaultWhitelistInitialized(context, true)
-        AppSettings.setDefaultWhitelistSeededVersion(context, currentVersion)
+        AppRulesSettingsStore.setDefaultWhitelistInitialized(context, true)
+        AppRulesSettingsStore.setDefaultWhitelistSeededVersion(context, currentVersion)
         // The upgrade reset can happen while the VPN is running: keep the
         // service-side allowlist cache and Go-side passthrough snapshot in sync.
         RuntimeDnsSettingsRefresher.refreshRuleIndexesIfRunning(

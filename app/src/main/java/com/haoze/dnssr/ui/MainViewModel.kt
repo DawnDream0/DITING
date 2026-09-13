@@ -18,6 +18,7 @@ import androidx.lifecycle.AndroidViewModel
 
 import androidx.lifecycle.viewModelScope
 
+import com.haoze.dnssr.ui.settings.ResolutionSettingsStore
 import com.haoze.dnssr.vpn.DnsProvider
 
 import com.haoze.dnssr.vpn.DnsVpnService
@@ -156,7 +157,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         _selectedProvider.value = DnsProvider.loadSelected(context)
 
-        val mode = AppSettings.getDnsResolutionMode(context)
+        val mode = ResolutionSettingsStore.getDnsResolutionMode(context)
 
         _resolutionMode.value = mode
 
@@ -164,15 +165,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             DnsResolutionMode.SINGLE -> emptySet()
 
-            DnsResolutionMode.SMART_PREDICTION -> AppSettings.getSmartPredictionProviderIds(context)
+            DnsResolutionMode.SMART_PREDICTION -> ResolutionSettingsStore.getSmartPredictionProviderIds(context)
 
-            DnsResolutionMode.PARALLEL_RACE -> AppSettings.getParallelRaceProviderIds(context)
+            DnsResolutionMode.PARALLEL_RACE -> ResolutionSettingsStore.getParallelRaceProviderIds(context)
 
-            DnsResolutionMode.PRIMARY_BACKUP -> AppSettings.getPrimaryBackupProviderIds(context).toSet()
+            DnsResolutionMode.PRIMARY_BACKUP -> ResolutionSettingsStore.getPrimaryBackupProviderIds(context).toSet()
 
         }.intersect(_providers.value.map { it.id }.toSet())
 
-        _homeProviderVisibility.value = AppSettings.getHomeProviderVisibility(context)
+        _homeProviderVisibility.value = ResolutionSettingsStore.getHomeProviderVisibility(context)
 
     }
 
@@ -209,7 +210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val updated = current.toMutableSet().apply { if (!remove(id)) add(id) }
 
-                AppSettings.setSmartPredictionProviderIds(context, updated)
+                ResolutionSettingsStore.setSmartPredictionProviderIds(context, updated)
 
                 _raceProviderIds.value = updated
 
@@ -219,7 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val updated = current.toMutableSet().apply { if (!remove(id)) add(id) }
 
-                AppSettings.setParallelRaceProviderIds(context, updated)
+                ResolutionSettingsStore.setParallelRaceProviderIds(context, updated)
 
                 _raceProviderIds.value = updated
 
@@ -229,7 +230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val updated = current.toMutableList().apply { if (!remove(id)) add(id) }
 
-                AppSettings.setPrimaryBackupProviderIds(context, updated)
+                ResolutionSettingsStore.setPrimaryBackupProviderIds(context, updated)
 
                 _raceProviderIds.value = updated.toSet()
 
@@ -242,14 +243,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             refreshRuntimeConfigIfRunning("resolution_mode_providers_changed")
 
         }
-
-    }
-
-
-
-    fun restartVpnAfterSettingsChange() {
-
-        refreshRuntimeConfigIfRunning("settings_changed")
 
     }
 

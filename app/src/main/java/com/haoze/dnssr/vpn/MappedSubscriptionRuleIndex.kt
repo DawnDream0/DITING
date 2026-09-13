@@ -21,7 +21,6 @@ internal class MappedSubscriptionRuleIndex private constructor(
     private val data: ByteBuffer,
     private val nodeCount: Int,
     private val edgeCount: Int,
-    private val sourceCount: Int,
     private val bloomBitCount: Int,
     private val bloomOffset: Int,
     private val nodeOffset: Int,
@@ -185,7 +184,7 @@ internal class MappedSubscriptionRuleIndex private constructor(
                 }
 
                 return MappedSubscriptionRuleIndex(
-                    file, data, nodes, edges, sources, bloomBits, HEADER_SIZE,
+                    file, data, nodes, edges, bloomBits, HEADER_SIZE,
                     nodeOffset, edgeOffset, labelOffset, sourceOffset, sourceNames
                 )
             } catch (error: Throwable) {

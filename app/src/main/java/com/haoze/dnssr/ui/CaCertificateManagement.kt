@@ -33,6 +33,7 @@ import com.haoze.dnssr.ui.components.SettingsNavigationItemData
 import com.haoze.dnssr.ui.components.SettingsTextItem
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.GoInspectionCaManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -59,7 +60,7 @@ fun CaCertificateSettingsScreen(
 @Composable
 fun CaCertificateManagement(onNavigateToGuide: () -> Unit) {
     val context = LocalContext.current
-    var httpsReady by remember { mutableStateOf(AppSettings.isHttpsInspectionReady(context)) }
+    var httpsReady by remember { mutableStateOf(AppRulesSettingsStore.isHttpsInspectionReady(context)) }
     var caFingerprint by remember { mutableStateOf<String?>(null) }
     var caBusy by remember { mutableStateOf(true) }
     var showInstallConfirmation by remember { mutableStateOf(false) }
@@ -69,10 +70,10 @@ fun CaCertificateManagement(onNavigateToGuide: () -> Unit) {
 
     fun applyCertificateReadiness(ready: Boolean) {
         httpsReady = ready
-        AppSettings.setHttpsInspectionReady(context, ready)
+        AppRulesSettingsStore.setHttpsInspectionReady(context, ready)
         if (!ready) {
-            val wasEnabled = AppSettings.isHttpInspectionEnabled(context)
-            AppSettings.setHttpInspectionEnabled(context, false)
+            val wasEnabled = AppRulesSettingsStore.isHttpInspectionEnabled(context)
+            AppRulesSettingsStore.setHttpInspectionEnabled(context, false)
             if (wasEnabled) RuntimeDnsSettingsRefresher.refreshAppExclusionsIfRunning(context)
         }
     }

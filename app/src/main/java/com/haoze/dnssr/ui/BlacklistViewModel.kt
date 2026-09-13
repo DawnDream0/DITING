@@ -8,6 +8,7 @@ import com.haoze.dnssr.data.entity.BlockRuleEntity
 import com.haoze.dnssr.data.entity.GoUrlRuleEntity
 import com.haoze.dnssr.data.entity.GoUrlRuleKind
 import com.haoze.dnssr.data.entity.RuleScope
+import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.AdGuardRuleParser
 import com.haoze.dnssr.vpn.BlockListManager
 import com.haoze.dnssr.vpn.GoUrlRuleManager
@@ -119,8 +120,8 @@ class BlacklistViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun loadStats() {
         viewModelScope.launch(Dispatchers.IO) {
-            val domainRulesEnabled = AppSettings.isDomainRulesEnabled(getApplication())
-            val addressRulesOperational = AppSettings.isAddressRulesFullyOperational(getApplication())
+            val domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(getApplication())
+            val addressRulesOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(getApplication())
 
             val totalDomains = if (domainRulesEnabled) blockRuleDao.enabledPatternsCount() else 0
             val userTotal = blockRuleDao.userRulesCount()
@@ -143,8 +144,8 @@ class BlacklistViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             val query = _searchQuery.value.trim()
             val currentFilter = _filter.value
-            val domainRulesEnabled = AppSettings.isDomainRulesEnabled(getApplication())
-            val addressRulesOperational = AppSettings.isAddressRulesFullyOperational(getApplication())
+            val domainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(getApplication())
+            val addressRulesOperational = AppRulesSettingsStore.isAddressRulesFullyOperational(getApplication())
 
             // 1. Collect applicable URL block rules (URL rule entries are few, so filter in memory)
             val allUrlEntities = when (currentFilter) {
