@@ -82,6 +82,10 @@ fun MainScreen(
     onNavigateToAppUpdate: () -> Unit,
     onNavigateToDataManagement: () -> Unit,
     onNavigateToTrafficStats: () -> Unit,
+    onNavigateToOptionalFeatures: () -> Unit = {},
+    onNavigateToOutboundProxy: () -> Unit = {},
+    onNavigateToDataCleanup: () -> Unit = {},
+    onNavigateToAgentApiSettings: () -> Unit = {},
     viewModel: MainViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -183,7 +187,12 @@ fun MainScreen(
                             onNavigateToCoBuilderList = onNavigateToCoBuilderList,
                             onNavigateToAppUpdate = onNavigateToAppUpdate,
                             onNavigateToDataManagement = onNavigateToDataManagement,
-                            onNavigateToTrafficStats = onNavigateToTrafficStats
+                            onNavigateToTrafficStats = onNavigateToTrafficStats,
+                            onNavigateToOptionalFeatures = onNavigateToOptionalFeatures,
+                            onNavigateToOutboundProxy = onNavigateToOutboundProxy,
+                            onNavigateToRaceModeSettings = onNavigateToRaceModeSettings,
+                            onNavigateToDataCleanup = onNavigateToDataCleanup,
+                            onNavigateToAgentApiSettings = onNavigateToAgentApiSettings
                         )
                     }
                 }

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Favorite
@@ -39,10 +40,12 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Javascript
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Troubleshoot
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -71,6 +74,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haoze.dnssr.R
 import com.haoze.dnssr.ui.components.SettingsCornerShape
+import com.haoze.dnssr.ui.settings.OptionalFeature
+import com.haoze.dnssr.ui.settings.OptionalFeaturesStore
 import com.haoze.dnssr.ui.settings.SystemSettingsStore
 
 internal data class FeatureHubItem(
@@ -110,20 +115,32 @@ internal fun FeatureHubScreen(
     onNavigateToCoBuilderList: () -> Unit,
     onNavigateToAppUpdate: () -> Unit,
     onNavigateToDataManagement: () -> Unit,
-    onNavigateToTrafficStats: () -> Unit
+    onNavigateToTrafficStats: () -> Unit,
+    onNavigateToOptionalFeatures: () -> Unit,
+    onNavigateToOutboundProxy: () -> Unit,
+    onNavigateToRaceModeSettings: () -> Unit,
+    onNavigateToDataCleanup: () -> Unit,
+    onNavigateToAgentApiSettings: () -> Unit
 ) {
     val context = LocalContext.current
     var showLogLongPressHint by remember {
         mutableStateOf(!SystemSettingsStore.isSettingsGuideAcknowledged(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID))
     }
+    val visibleFeatures by remember(context) {
+        OptionalFeaturesStore.init(context)
+        OptionalFeaturesStore.visibleFeaturesFlow
+    }.collectAsState()
 
     val categories = listOf(
         FeatureHubCategory(
             stringResource(R.string.feature_hub_dns_services),
-            listOf(
-                FeatureHubItem(stringResource(R.string.feature_hub_provider_management), Icons.Filled.Dns, onNavigateToProviderManagement),
-                FeatureHubItem(stringResource(R.string.feature_hub_bootstrap_settings), Icons.Filled.Public, onNavigateToBootstrapSettings)
-            )
+            buildList {
+                add(FeatureHubItem(stringResource(R.string.feature_hub_provider_management), Icons.Filled.Dns, onNavigateToProviderManagement))
+                add(FeatureHubItem(stringResource(R.string.feature_hub_bootstrap_settings), Icons.Filled.Public, onNavigateToBootstrapSettings))
+                if (OptionalFeature.RESOLUTION_MODE.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_resolution_mode), Icons.AutoMirrored.Filled.AltRoute, onNavigateToRaceModeSettings))
+                }
+            }
         ),
         FeatureHubCategory(
             stringResource(R.string.feature_hub_policies_rules),
@@ -136,44 +153,68 @@ internal fun FeatureHubScreen(
         ),
         FeatureHubCategory(
             stringResource(R.string.feature_hub_network_control),
-            listOf(
-                FeatureHubItem(stringResource(R.string.feature_hub_traffic_stats), Icons.Filled.DataUsage, onNavigateToTrafficStats),
-                FeatureHubItem(stringResource(R.string.feature_hub_app_rules), Icons.Filled.Android, onNavigateToAppRules),
-                FeatureHubItem(stringResource(R.string.feature_hub_blocked_apps), Icons.Filled.WifiOff, onNavigateToBlockedApps),
-                FeatureHubItem(stringResource(R.string.feature_hub_excluded_apps), Icons.Filled.Apps, onNavigateToExcludedApps)
-            )
+            buildList {
+                if (OptionalFeature.TRAFFIC_STATS.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_traffic_stats), Icons.Filled.DataUsage, onNavigateToTrafficStats))
+                }
+                if (OptionalFeature.APP_RULES.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_app_rules), Icons.Filled.Android, onNavigateToAppRules))
+                }
+                add(FeatureHubItem(stringResource(R.string.feature_hub_blocked_apps), Icons.Filled.WifiOff, onNavigateToBlockedApps))
+                add(FeatureHubItem(stringResource(R.string.feature_hub_excluded_apps), Icons.Filled.Apps, onNavigateToExcludedApps))
+                if (OptionalFeature.OUTBOUND_PROXY.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_outbound_proxy), Icons.Filled.Lan, onNavigateToOutboundProxy))
+                }
+            }
         ),
         FeatureHubCategory(
             stringResource(R.string.feature_hub_advanced_tools),
-            listOf(
-                FeatureHubItem(stringResource(R.string.feature_hub_https_inspection), Icons.Filled.Troubleshoot, onNavigateToHttpInspection),
-                FeatureHubItem(stringResource(R.string.feature_hub_network_tools), Icons.Filled.NetworkCheck, onNavigateToNetworkTools)
-            )
+            buildList {
+                if (OptionalFeature.HTTPS_INSPECTION.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_https_inspection), Icons.Filled.Troubleshoot, onNavigateToHttpInspection))
+                }
+                if (OptionalFeature.NETWORK_TOOLS.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_network_tools), Icons.Filled.NetworkCheck, onNavigateToNetworkTools))
+                }
+                if (OptionalFeature.AGENT_API.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_agent_api), Icons.Filled.SmartToy, onNavigateToAgentApiSettings))
+                }
+            }
         ),
         FeatureHubCategory(
             stringResource(R.string.feature_hub_interface_management),
-            listOf(
-                FeatureHubItem(stringResource(R.string.feature_hub_appearance), Icons.Filled.Palette, onNavigateToAppearanceSettings),
-                FeatureHubItem(stringResource(R.string.feature_hub_service_display), Icons.Filled.Visibility, onNavigateToHomeProviderVisibility),
-                FeatureHubItem(
-                    title = stringResource(R.string.feature_hub_logs),
-                    icon = Icons.Filled.History,
-                    onClick = onNavigateToLogs,
-                    onLongClick = {
-                        SystemSettingsStore.acknowledgeSettingsGuide(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID)
-                        showLogLongPressHint = false
-                        onNavigateToLogRetentionSettings()
-                    }
-                ),
-                FeatureHubItem(stringResource(R.string.feature_hub_other_settings), Icons.Filled.Settings, onNavigateToSettings)
-            )
+            buildList {
+                if (OptionalFeature.APPEARANCE.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_appearance), Icons.Filled.Palette, onNavigateToAppearanceSettings))
+                }
+                if (OptionalFeature.SERVICE_DISPLAY.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_service_display), Icons.Filled.Visibility, onNavigateToHomeProviderVisibility))
+                }
+                add(FeatureHubItem(stringResource(R.string.feature_hub_optional_features), Icons.Filled.Extension, onNavigateToOptionalFeatures))
+                add(
+                    FeatureHubItem(
+                        title = stringResource(R.string.feature_hub_logs),
+                        icon = Icons.Filled.History,
+                        onClick = onNavigateToLogs,
+                        onLongClick = {
+                            SystemSettingsStore.acknowledgeSettingsGuide(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID)
+                            showLogLongPressHint = false
+                            onNavigateToLogRetentionSettings()
+                        }
+                    )
+                )
+                add(FeatureHubItem(stringResource(R.string.feature_hub_other_settings), Icons.Filled.Settings, onNavigateToSettings))
+            }
         ),
         FeatureHubCategory(
             stringResource(R.string.feature_hub_data_and_updates),
-            listOf(
-                FeatureHubItem(stringResource(R.string.feature_hub_data_management), Icons.Filled.ImportExport, onNavigateToDataManagement),
-                FeatureHubItem(stringResource(R.string.feature_hub_updates_support), Icons.Filled.Update, onNavigateToAppUpdate)
-            )
+            buildList {
+                add(FeatureHubItem(stringResource(R.string.feature_hub_data_management), Icons.Filled.ImportExport, onNavigateToDataManagement))
+                if (OptionalFeature.DATA_CLEANUP.key in visibleFeatures) {
+                    add(FeatureHubItem(stringResource(R.string.feature_hub_data_cleanup), Icons.Filled.DeleteSweep, onNavigateToDataCleanup))
+                }
+                add(FeatureHubItem(stringResource(R.string.feature_hub_updates_support), Icons.Filled.Update, onNavigateToAppUpdate))
+            }
         ),
         FeatureHubCategory(
             stringResource(R.string.feature_hub_about_app),
@@ -186,6 +227,8 @@ internal fun FeatureHubScreen(
         )
     )
 
+    val visibleCategories = categories.filter { it.items.isNotEmpty() }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         modifier = Modifier.fillMaxSize(),
@@ -193,7 +236,7 @@ internal fun FeatureHubScreen(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        categories.forEach { category ->
+        visibleCategories.forEach { category ->
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
                     text = category.title,

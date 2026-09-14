@@ -330,6 +330,7 @@ class SettingsRouteActivity : AppLocalizedActivity() {
             Routes.SPONSOR_LIST -> SponsorListScreen(onBack, "赞助者名单")
             Routes.CO_BUILDER_LIST -> CoBuilderListScreen(onBack, "共建者名单")
             Routes.APP_TRAFFIC_STATS -> AppTrafficStatsScreen(onBack)
+            Routes.OPTIONAL_FEATURES -> OptionalFeaturesScreen(onBack)
             else -> SettingsScreen(onBack, onNavigate)
         }
     }

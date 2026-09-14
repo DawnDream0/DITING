@@ -43,9 +43,7 @@ object ScreenDestinations {
     val resolutionSmart = child(Routes.RESOLUTION_SMART, "智能选择", "配置候选服务，按近期成功率和延迟优先选择", Icons.AutoMirrored.Filled.AltRoute, raceModeProviders)
     val resolutionParallel = child(Routes.RESOLUTION_PARALLEL, "最快响应", "配置同时查询并采用最先成功结果的服务", Icons.AutoMirrored.Filled.AltRoute, raceModeProviders)
     val resolutionBackup = child(Routes.RESOLUTION_BACKUP, "依次尝试", "配置失败后依次尝试的服务顺序", Icons.AutoMirrored.Filled.AltRoute, raceModeProviders)
-    val all = listOf(cacheSettings, raceModeProviders, logRetentionSettings,
-        foregroundBackgroundSettings, outboundProxy, languageSettings,
-        dataCleanup, agentApiSettings, resolutionSingle, resolutionSmart, resolutionParallel, resolutionBackup)
+    val all = listOf(cacheSettings, logRetentionSettings, foregroundBackgroundSettings, languageSettings)
     val mainEntries = all.filter { it.mainSection != null }
         .sortedWith(compareBy({ it.mainSection!!.order }, { all.indexOf(it) }))
     private val byRoute = all.associateBy { it.route }

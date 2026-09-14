@@ -4,6 +4,19 @@ package com.haoze.dnssr.ui.localization
  * Localization entries for app settings, day/night mode, theme colors, transparency, wallpaper background, outbound proxy, and data cleanup.
  */
 internal fun translateSettingsAndAppearanceExact(text: String): String? = when (text) {
+    "可选功能" -> "Optional features"
+    "可选功能列表" -> "Optional features list"
+    "取消全选" -> "Deselect all"
+    "自定义在功能中心中显示的功能卡片。勾选后即可在功能中心中显示，未勾选的功能将保持隐藏。" -> "Customize which feature cards appear in Feature Hub. Checked features will be shown; unchecked features will remain hidden."
+    "解密并检查特定应用的 HTTP(S) 流量，支持域名与 URL 过滤" -> "Decrypt and inspect HTTP(S) traffic for selected apps with domain and URL filtering"
+    "自定义日夜模式、主题色彩、组件透明度与软件壁纸背景" -> "Customize dark/light mode, accent color, opacity, and wallpaper background"
+    "自定义在首页解析服务下拉列表中显示的服务商" -> "Customize providers shown in the home resolution service selector"
+    "为特定应用单独指定 DNS 服务商或放行规则" -> "Specify independent DNS providers or allow rules for specific apps"
+    "提供 DNS 查询、Ping 延迟测试与网络连通性诊断工具" -> "Provide DNS lookup, Ping latency testing, and network diagnostics tools"
+    "统计各应用的网络连接数、上传与下载流量明细" -> "Statistics on network connections, upload and download traffic details for each app"
+    "选择单一服务、智能选择、最快响应或依次尝试策略" -> "Select single provider, smart selection, fastest response, or fallback strategy"
+    "删除缓存、日志或域名与地址过滤规则" -> "Delete cache, logs, or domain and address filtering rules"
+    "配置大语言模型端点与密钥，供外部或插件调用" -> "Configure large language model endpoints and keys for external or plugin access"
     "清除全部流量记录？" -> "Clear all traffic records?"
     "关闭“通知常驻”只会停止 VPN 未运行时的监控提醒。VPN 正在运行时，系统要求的前台服务通知会继续显示。" -> "Disabling “Persistent notification” stops monitoring reminders only while the VPN is not running. The required foreground-service notification remains while the VPN is running."
     "SOCKS5 通过 UDP ASSOCIATE 转发 UDP。代理应用本身将绕过 DNSSR，防止流量环路。" -> "SOCKS5 forwards UDP through UDP ASSOCIATE. The proxy app itself bypasses DNSSR to prevent traffic loops."

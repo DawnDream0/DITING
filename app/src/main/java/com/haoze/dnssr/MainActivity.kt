@@ -196,7 +196,11 @@ class MainActivity : AppLocalizedActivity() {
                                 onNavigateToCoBuilderList = { launchSettings(Routes.CO_BUILDER_LIST) },
                                 onNavigateToAppUpdate = { launchSettings(Routes.APP_UPDATE) },
                                 onNavigateToDataManagement = { launchSettings(Routes.CONFIG_TRANSFER) },
-                                onNavigateToTrafficStats = { launchSettings(Routes.APP_TRAFFIC_STATS) }
+                                onNavigateToTrafficStats = { launchSettings(Routes.APP_TRAFFIC_STATS) },
+                                onNavigateToOptionalFeatures = { launchSettings(Routes.OPTIONAL_FEATURES) },
+                                onNavigateToOutboundProxy = { launchSettings(Routes.OUTBOUND_PROXY_SETTINGS) },
+                                onNavigateToDataCleanup = { launchSettings(Routes.DATA_CLEANUP) },
+                                onNavigateToAgentApiSettings = { launchSettings(Routes.AGENT_API_SETTINGS) }
                             )
                         } else {
                             InitialAgreementDialog(

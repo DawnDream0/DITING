@@ -409,12 +409,14 @@ fun SettingsCheckboxItem(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    leadingIcon: ImageVector? = null,
     enabled: Boolean = true,
     contentPadding: PaddingValues = DefaultSettingsItemContentPadding
 ) {
     SettingsItem(
         title = title,
         subtitle = subtitle,
+        leadingIcon = leadingIcon,
         modifier = modifier,
         contentPadding = contentPadding,
         enabled = enabled,
