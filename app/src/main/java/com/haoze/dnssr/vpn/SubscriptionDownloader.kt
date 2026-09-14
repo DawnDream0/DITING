@@ -3,6 +3,7 @@ package com.haoze.dnssr.vpn
 import android.util.Log
 import com.haoze.dnssr.data.dao.SubscriptionDao
 import com.haoze.dnssr.data.entity.SubscriptionEntity
+import com.haoze.dnssr.data.entity.SubscriptionKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,13 +28,14 @@ internal class SubscriptionDownloader(
     suspend fun downloadAndImport(
         url: String,
         subscriptionId: Long,
+        kind: String,
         enabled: Boolean,
         onProgressUpdate: (suspend (current: Int, totalHint: Int) -> Unit)? = null
     ): Result<InitialImportResult> = withContext(Dispatchers.IO) {
         try {
-            val subscription = subscriptionDao.byId(subscriptionId) ?: SubscriptionEntity(url = url, name = url)
+            val subscription = subscriptionDao.byId(subscriptionId) ?: SubscriptionEntity(url = url, name = url, kind = kind)
             Result.success(
-                downloadAndImportStreaming(subscription, subscriptionId, enabled, onProgressUpdate)
+                downloadAndImportStreaming(subscription, subscriptionId, kind, enabled, onProgressUpdate)
             )
         } catch (e: Exception) {
             Log.e(TAG, "下载导入失败: $url", e)
@@ -44,6 +46,7 @@ internal class SubscriptionDownloader(
     private suspend fun downloadAndImportStreaming(
         subscription: SubscriptionEntity,
         subscriptionId: Long,
+        kind: String,
         enabled: Boolean,
         onProgressUpdate: (suspend (current: Int, totalHint: Int) -> Unit)?
     ): InitialImportResult {
@@ -52,19 +55,20 @@ internal class SubscriptionDownloader(
         }
         if (mirrorUrl != null) {
             try {
-                return downloadAndImportStreamingAt(subscription, subscriptionId, enabled, mirrorUrl, onProgressUpdate)
+                return downloadAndImportStreamingAt(subscription, subscriptionId, kind, enabled, mirrorUrl, onProgressUpdate)
             } catch (e: Exception) {
                 if (!subscription.mirrorFallback || e is CancellationException) throw e
                 Log.w(TAG, "镜像下载失败，回退原始订阅地址: $mirrorUrl", e)
                 ruleStorage.removeSubscriptionRules(subscriptionId)
             }
         }
-        return downloadAndImportStreamingAt(subscription, subscriptionId, enabled, subscription.url, onProgressUpdate)
+        return downloadAndImportStreamingAt(subscription, subscriptionId, kind, enabled, subscription.url, onProgressUpdate)
     }
 
     private suspend fun downloadAndImportStreamingAt(
         subscription: SubscriptionEntity,
         subscriptionId: Long,
+        kind: String,
         enabled: Boolean,
         requestUrl: String,
         onProgressUpdate: (suspend (current: Int, totalHint: Int) -> Unit)?
@@ -78,8 +82,9 @@ internal class SubscriptionDownloader(
                 ruleStreamer.import(
                     reader,
                     ruleStorage.sourceTag(subscriptionId),
+                    kind,
                     enabled,
-                    onEmpty = { throw SubscriptionUpdateException("订阅中没有可导入的有效规则", retryable = false) }
+                    onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) }
                 ) { processed ->
                     onProgressUpdate?.invoke(processed, maxOf(processed, progressTotalHint))
                 }
@@ -104,25 +109,27 @@ internal class SubscriptionDownloader(
         onProgressUpdate: (suspend (current: Int, totalHint: Int) -> Unit)? = null
     ): StreamingDownloadResult {
         val stagingSource = ruleStorage.stagingSourceTag(subscriptionId)
+        val kind = SubscriptionKind.normalize(subscription.kind)
         ruleStorage.removeRulesBySource(stagingSource)
         val mirrorUrl = subscription.mirrorTemplate?.let {
             SubscriptionUrlHelper.buildMirrorUrl(it, subscription.url)
         }
         if (mirrorUrl != null) {
             try {
-                return downloadAndStageAt(subscription, stagingSource, enabled, mirrorUrl, useValidators, onProgressUpdate)
+                return downloadAndStageAt(subscription, stagingSource, kind, enabled, mirrorUrl, useValidators, onProgressUpdate)
             } catch (e: Exception) {
                 if (!subscription.mirrorFallback || e is CancellationException) throw e
                 Log.w(TAG, "镜像下载失败，回退原始订阅地址: $mirrorUrl", e)
                 ruleStorage.removeRulesBySource(stagingSource)
             }
         }
-        return downloadAndStageAt(subscription, stagingSource, enabled, subscription.url, useValidators, onProgressUpdate)
+        return downloadAndStageAt(subscription, stagingSource, kind, enabled, subscription.url, useValidators, onProgressUpdate)
     }
 
     private suspend fun downloadAndStageAt(
         subscription: SubscriptionEntity,
         stagingSource: String,
+        kind: String,
         enabled: Boolean,
         requestUrl: String,
         useValidators: Boolean,
@@ -140,7 +147,7 @@ internal class SubscriptionDownloader(
                 return@use StreamingDownloadResult.NotModified(response.header("ETag"), response.header("Last-Modified"))
             }
             if (response.code == 412 && useValidators) {
-                return@use downloadAndStageAt(subscription, stagingSource, enabled, requestUrl, useValidators = false, onProgressUpdate)
+                return@use downloadAndStageAt(subscription, stagingSource, kind, enabled, requestUrl, useValidators = false, onProgressUpdate)
             }
             if (!response.isSuccessful) throw httpFailure(response)
             val body = response.body ?: throw SubscriptionUpdateException("订阅响应为空", retryable = false)
@@ -148,8 +155,9 @@ internal class SubscriptionDownloader(
                 ruleStreamer.import(
                     reader,
                     stagingSource,
+                    kind,
                     enabled,
-                    onEmpty = { throw SubscriptionUpdateException("订阅中没有可导入的有效规则", retryable = false) }
+                    onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) }
                 ) { processed ->
                     onProgressUpdate?.invoke(processed, maxOf(processed, progressTotalHint))
                 }
@@ -166,5 +174,22 @@ internal class SubscriptionDownloader(
     private fun httpFailure(response: Response): SubscriptionUpdateException {
         val retryable = response.code in setOf(408, 425, 429) || response.code in 500..599
         return SubscriptionUpdateException("HTTP ${response.code}", retryable)
+    }
+
+    /**
+     * Distinguishes "this source holds nothing of the requested type" from
+     * "this source holds nothing usable at all" — the first one is almost
+     * always a subscription type mismatch.
+     */
+    private fun emptySourceException(
+        typeMismatchOnly: Boolean,
+        kind: String
+    ): SubscriptionUpdateException {
+        val message = if (typeMismatchOnly) {
+            "订阅中没有${SubscriptionKind.displayName(kind)}，请确认订阅类型是否选错"
+        } else {
+            "订阅中没有可导入的有效规则"
+        }
+        return SubscriptionUpdateException(message, retryable = false)
     }
 }

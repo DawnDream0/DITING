@@ -101,6 +101,8 @@ internal fun translateRulesAndSubscriptionExact(text: String): String? = when (t
     "选择镜像站模板" -> "Choose mirror template"
     "暂无模板，请先在域名规则 → 镜像站模板中添加。" -> "No templates. Add one under Domain rules -> Mirror templates first."
     "hosts 覆写" -> "hosts override"
+    "黑白名单规则" -> "Blacklist & allowlist rules"
+    "hosts 规则" -> "hosts rules"
     " · 自定义镜像" -> " · Custom mirror"
     "打开规则订阅操作" -> "Open rule subscription actions"
     "屏蔽规则" -> "Block rules"
@@ -525,6 +527,33 @@ internal fun translateRulesAndSubscriptionPattern(text: String): String? = when 
                 .replace("请求日志", "request logs")
                 .replace("DNS 缓存", "DNS cache")
                 .replace("全部规则", "all rules")
+    // Import / update summaries, e.g. "导入成功：黑名单 12 条，白名单 3 条，覆写 0 条，重复 5 条，无效/不支持 0 条，类型不匹配 4 条"
+    text.startsWith("导入成功：") || text.startsWith("订阅已保存：") ||
+        text.startsWith("更新成功：") || text.startsWith("导入完成：") -> text
+        .replace("导入成功：", "Import complete: ")
+        .replace("订阅已保存：", "Subscription saved: ")
+        .replace("更新成功：", "Update complete: ")
+        .replace("导入完成：", "Import complete: ")
+        .replace("黑名单 ", "blocklist ")
+        .replace("白名单 ", "allowlist ")
+        .replace("覆写 ", "override ")
+        .replace("重复 ", "duplicate ")
+        .replace("无效/不支持 ", "invalid/unsupported ")
+        .replace("类型不匹配 ", "type mismatch ")
+        .replace("，", ", ")
+        .replace(" 条", " rules")
+    // Thrown when a source holds rules of the other type only.
+    text.startsWith("订阅中没有") && text.endsWith("，请确认订阅类型是否选错") -> text
+        .replace("订阅中没有", "This source contains no ")
+        .replace("黑白名单规则", "blacklist/allowlist rules")
+        .replace("hosts 规则", "hosts rules")
+        .replace("，请确认订阅类型是否选错", ". Please check whether the subscription type is correct.")
+    // Type note in the edit-subscription dialog.
+    text.startsWith("规则类型：") -> text
+        .replace("规则类型：", "Rule type: ")
+        .replace("黑白名单规则", "blacklist/allowlist rules")
+        .replace("hosts 规则", "hosts rules")
+        .replace("（不可修改，如需更换请删除后重新添加）", " (read-only; delete the subscription and add it again to change the type)")
     text.endsWith(" 条规则") -> text.removeSuffix(" 条规则") + " rules"
     else -> null
 }

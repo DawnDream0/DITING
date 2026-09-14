@@ -24,6 +24,7 @@ import androidx.work.workDataOf
 import com.haoze.dnssr.MainActivity
 import com.haoze.dnssr.R
 import com.haoze.dnssr.data.AppDatabase
+import com.haoze.dnssr.data.entity.SubscriptionKind
 import com.haoze.dnssr.ui.RuntimeDnsSettingsRefresher
 import com.haoze.dnssr.ui.localizedText
 import java.io.BufferedReader
@@ -88,7 +89,7 @@ object RuleOperationScheduler {
             .putString(KEY_NAME, name)
             .putString(KEY_URI, uri?.toString())
             .putString(KEY_PATTERN, pattern)
-            .putString(KEY_KIND, kind ?: com.haoze.dnssr.data.entity.SubscriptionKind.UNIFIED)
+            .putString(KEY_KIND, kind ?: SubscriptionKind.DOMAIN)
             .putString(KEY_MIRROR_TEMPLATE, mirrorTemplate)
             .putBoolean(KEY_MIRROR_FALLBACK, mirrorFallback)
             .putLong(KEY_GROUP_ID, groupId)
@@ -141,9 +142,7 @@ class RuleOperationWorker(
         val ruleScope = com.haoze.dnssr.data.entity.RuleScope.fromStorage(
             inputData.getString(RuleOperationScheduler.KEY_SCOPE).orEmpty()
         )
-        val ruleIndexDirectory = java.io.File(applicationContext.filesDir, "rule-index").let {
-            if (ruleScope == com.haoze.dnssr.data.entity.RuleScope.HTTPS) java.io.File(it, "https") else it
-        }
+        val ruleIndexDirectory = RuleIndexLayout.scopeDirectory(applicationContext.filesDir, ruleScope)
         val blockManager = BlockListManager(database.blockRuleDao(), ruleIndexDirectory, ruleScope, reloadCacheAfterChanges = false)
         val allowManager = AllowListManager(database.allowRuleDao(), ruleIndexDirectory, ruleScope, reloadCacheAfterChanges = false)
         val rewriteManager = RewriteRuleManager(database.rewriteRuleDao(), ruleIndexDirectory, ruleScope, reloadCacheAfterChanges = false)
@@ -252,7 +251,7 @@ class RuleOperationWorker(
             val result = subscriptionManager.addSubscription(
                 inputData.getString(RuleOperationScheduler.KEY_URL).orEmpty(),
                 inputData.getString(RuleOperationScheduler.KEY_NAME),
-                inputData.getString(RuleOperationScheduler.KEY_KIND) ?: com.haoze.dnssr.data.entity.SubscriptionKind.UNIFIED,
+                inputData.getString(RuleOperationScheduler.KEY_KIND) ?: SubscriptionKind.DOMAIN,
                 inputData.getString(RuleOperationScheduler.KEY_MIRROR_TEMPLATE),
                 inputData.getBoolean(RuleOperationScheduler.KEY_MIRROR_FALLBACK, true),
                 inputData.getLong(RuleOperationScheduler.KEY_GROUP_ID, -1).takeIf { it >= 0 }
@@ -265,7 +264,7 @@ class RuleOperationWorker(
             val result = subscriptionManager.addLocalSubscription(
                 uri.toString(),
                 inputData.getString(RuleOperationScheduler.KEY_NAME).orEmpty(),
-                inputData.getString(RuleOperationScheduler.KEY_KIND) ?: com.haoze.dnssr.data.entity.SubscriptionKind.UNIFIED
+                inputData.getString(RuleOperationScheduler.KEY_KIND) ?: SubscriptionKind.DOMAIN
             ) { openUriReader(uri) }
             result.getOrThrow()
             OperationExecutionResult(subscriptionManager.latestImportSummary()?.displayMessage("导入成功") ?: "导入成功")
@@ -318,8 +317,9 @@ class RuleOperationWorker(
             )
         }
         RuleOperationType.IMPORT_RULES -> {
+            val kind = requestedSubscriptionKind()
             val msg = openUriReader(requiredUri()).use { reader ->
-                importCategorizedRules(reader, blockManager, allowManager, rewriteManager, type)
+                importCategorizedRules(reader, blockManager, allowManager, rewriteManager, type, kind)
             }.displayMessage("导入完成")
             OperationExecutionResult(msg)
         }
@@ -364,24 +364,38 @@ class RuleOperationWorker(
         ?.bufferedReader()
         ?: throw IOException("无法读取所选文件")
 
+    /** Rule type requested by the caller; defaults to domain rules. */
+    private fun requestedSubscriptionKind(): String =
+        SubscriptionKind.normalize(inputData.getString(RuleOperationScheduler.KEY_KIND))
+
     private suspend fun importCategorizedRules(
         reader: BufferedReader,
         blockManager: BlockListManager,
         allowManager: AllowListManager,
         rewriteManager: RewriteRuleManager,
-        type: RuleOperationType
+        type: RuleOperationType,
+        kind: String
     ): RuleImportSummary {
         val importer = CategorizedRuleStreamImporter(blockManager, allowManager, rewriteManager, IMPORT_CHUNK_SIZE)
         return importer.import(
             reader = reader,
             source = LOCAL_IMPORT_SOURCE,
+            kind = kind,
             enabled = true,
             refreshCache = true,
             onProgress = { processed ->
                 setProgressAsync(progressData(type, -1, processed, 0))
                 notifyProgress(titleFor(type), processed, 0)
             },
-            onEmpty = { throw IllegalArgumentException("文件中没有可导入的有效规则") }
+            onEmpty = { typeMismatchOnly ->
+                throw IllegalArgumentException(
+                    if (typeMismatchOnly) {
+                        "文件中没有${SubscriptionKind.displayName(kind)}，请确认导入类型是否正确"
+                    } else {
+                        "文件中没有可导入的有效规则"
+                    }
+                )
+            }
         )
     }
 

@@ -41,7 +41,17 @@ data class BlockAppRuleBucket(
         wildcardRules.isEmpty() && importantWildcardRules.isEmpty()
 }
 
-class BlockRuleCache(private val indexFile: File? = null) {
+/**
+ * In-memory cache of block rules, backed by an optional mmap index.
+ *
+ * Both index paths come from [RuleIndexLayout]; the important bucket gets its
+ * own file name (`block.important.trie`) rather than being derived from the
+ * regular one, so it is passed explicitly instead of being guessed here.
+ */
+class BlockRuleCache(
+    private val indexFile: File? = null,
+    private val importantIndexFile: File? = null
+) {
 
     @Volatile
     private var customRules: Map<String, String> = emptyMap()
@@ -126,7 +136,7 @@ class BlockRuleCache(private val indexFile: File? = null) {
         }
 
         val targetFile = indexFile
-        val importantFile = targetFile?.let { File(it.parentFile, it.name + ".important") }
+        val importantFile = importantIndexFile
 
         var mapped = targetFile?.let { file ->
             if (!forceRebuild && file.exists() && file.length() > 0) {

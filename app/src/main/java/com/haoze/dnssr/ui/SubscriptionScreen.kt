@@ -68,7 +68,7 @@ fun SubscriptionScreen(
 
     var showAddChoiceDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
-    var pendingKind by remember { mutableStateOf(SubscriptionKind.UNIFIED) }
+    var pendingKind by remember { mutableStateOf(SubscriptionKind.DOMAIN) }
     var showDnsImportDialog by remember { mutableStateOf(false) }
     var showActionDialog by remember { mutableStateOf<SubscriptionEntity?>(null) }
     var showDeleteDialog by remember { mutableStateOf<SubscriptionEntity?>(null) }
@@ -115,7 +115,7 @@ fun SubscriptionScreen(
                 if (ruleScope == com.haoze.dnssr.data.entity.RuleScope.HTTPS) {
                     showAddChoiceDialog = true
                 } else {
-                    pendingKind = SubscriptionKind.UNIFIED
+                    pendingKind = SubscriptionKind.DOMAIN
                     showAddDialog = true
                 }
             }, enabled = !busy) {
@@ -165,7 +165,7 @@ fun SubscriptionScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = localizedText("点击右上角 + 添加 AdGuard DNS 规则地址"),
+                                    text = localizedText("点击右上角 + 添加订阅链接，并选择黑白名单或 hosts 类型"),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -215,7 +215,7 @@ fun SubscriptionScreen(
 
             item {
                 SettingsInfoText(
-                    text = localizedText("支持 AdGuard DNS 过滤、白名单、hosts IP 覆写及复合规则自动分类。支持 BOM、行尾注释、hosts 多域名和 IDN 域名。"),
+                    text = localizedText("订阅按类型导入：黑白名单规则只收录域名屏蔽与放行，hosts 规则只收录 IP / CNAME 覆写。支持 BOM、行尾注释、hosts 多域名和 IDN 域名。"),
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
@@ -226,7 +226,7 @@ fun SubscriptionScreen(
         AddSubscriptionChoiceDialog(
             onDismiss = { showAddChoiceDialog = false },
             onAddRemote = {
-                pendingKind = SubscriptionKind.UNIFIED
+                pendingKind = SubscriptionKind.DOMAIN
                 showAddChoiceDialog = false
                 showAddDialog = true
             },
@@ -244,8 +244,9 @@ fun SubscriptionScreen(
             onDismiss = { showAddDialog = false },
             mirrorTemplates = mirrorTemplates,
             groups = subscriptionGroups,
-            onConfirm = { url, name, mirrorTemplate, mirrorFallback, groupId, newGroupName ->
-                viewModel.addSubscription(url, name, pendingKind, mirrorTemplate, mirrorFallback, groupId, newGroupName)
+            initialKind = pendingKind,
+            onConfirm = { url, name, kind, mirrorTemplate, mirrorFallback, groupId, newGroupName ->
+                viewModel.addSubscription(url, name, kind, mirrorTemplate, mirrorFallback, groupId, newGroupName)
                 showAddDialog = false
             }
         )

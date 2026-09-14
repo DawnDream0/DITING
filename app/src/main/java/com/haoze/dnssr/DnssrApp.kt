@@ -8,6 +8,7 @@ import com.haoze.dnssr.crash.CrashBreadcrumbs
 import com.haoze.dnssr.crash.CrashCollector
 import com.haoze.dnssr.crash.CrashHandler
 import com.haoze.dnssr.crash.CrashLogManager
+import com.haoze.dnssr.vpn.RuleIndexLayout
 
 /**
  * Application entry point for DITING. Initializes app-wide infrastructure such
@@ -38,6 +39,13 @@ class DnssrApp : Application() {
         Thread({
             CrashLogManager.checkAndCollectNativeCrashes(this)
         }, "NativeCrashCollector").start()
+
+        // Move rule index artifacts left over from the pre-type-split layout into
+        // the current layout. Renames only, so an upgrade keeps its compiled
+        // indexes; off the main thread because it touches the filesystem.
+        Thread({
+            runCatching { RuleIndexLayout.migrateLegacyLayout(filesDir) }
+        }, "RuleIndexLayoutMigration").start()
 
         // Track activity lifecycles to keep the foreground state current and to
         // record crash breadcrumbs.

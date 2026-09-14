@@ -6,6 +6,7 @@ import com.haoze.dnssr.data.entity.MirrorTemplateEntity
 import com.haoze.dnssr.data.entity.RewriteTargetType
 import com.haoze.dnssr.data.entity.RuleScope
 import com.haoze.dnssr.data.entity.SubscriptionGroupEntity
+import com.haoze.dnssr.data.entity.SubscriptionKind
 import com.haoze.dnssr.notification.NotificationSettingsStore
 import com.haoze.dnssr.ui.AppLanguageManager
 import com.haoze.dnssr.ui.AppLanguageMode
@@ -347,13 +348,14 @@ class ConfigImporter(private val context: Context) {
 
         // Remote subscriptions
         val existingSubscriptionKeys = database.subscriptionDao().allRemote()
-            .map { subscriptionKey(it.url, RuleScope.DNS) }.toMutableSet()
+            .map { subscriptionKey(it.url, RuleScope.DNS, it.kind) }.toMutableSet()
         config.subscriptions.forEach { entry ->
             val item = "规则订阅：${entry.name}"
             val detail = "规则订阅：${entry.name}"
-            val key = subscriptionKey(entry.url, entry.scope)
+            val entryKind = SubscriptionKind.normalize(entry.kind)
+            val key = subscriptionKey(entry.url, entry.scope, entryKind)
             if (!existingSubscriptionKeys.add(key)) {
-                database.subscriptionDao().byUrl(entry.url)?.let { existingSub ->
+                database.subscriptionDao().byUrlAndKind(entry.url, entryKind)?.let { existingSub ->
                     if (existingSub.enabled != entry.enabled) {
                         database.subscriptionDao().setEnabled(existingSub.id, entry.enabled)
                     }
@@ -366,7 +368,7 @@ class ConfigImporter(private val context: Context) {
                     url = entry.url,
                     name = entry.name,
                     groupId = entry.groupName?.let { importedGroupIds[it.lowercase()] },
-                    kind = entry.kind,
+                    kind = entryKind,
                     mirrorTemplate = entry.mirrorTemplate,
                     mirrorFallback = entry.mirrorFallback
                 )
@@ -376,7 +378,7 @@ class ConfigImporter(private val context: Context) {
                     complete(item, "添加 $detail 失败")
                 } else {
                     if (!entry.enabled) {
-                        database.subscriptionDao().byUrl(entry.url)?.let {
+                        database.subscriptionDao().byUrlAndKind(entry.url, entryKind)?.let {
                             database.subscriptionDao().setEnabled(it.id, false)
                         }
                     }
@@ -786,6 +788,6 @@ class ConfigImporter(private val context: Context) {
         else -> "${provider.protocol.name}:${provider.host.lowercase()}:${provider.port}"
     }
 
-    private fun subscriptionKey(url: String, scope: RuleScope) =
-        "${scope.storageValue}:${url.trim().lowercase()}"
+    private fun subscriptionKey(url: String, scope: RuleScope, kind: String) =
+        "${scope.storageValue}:${SubscriptionKind.normalize(kind)}:${url.trim().lowercase()}"
 }

@@ -26,7 +26,7 @@ class RewriteRuleManager(
     suspend fun refreshCache(rebuildSubscriptionIndex: Boolean = false) {
         manualRules = dao.enabledNonSubscriptionRules().toAnswerMap()
 
-        val indexFile = indexDirectory?.let { File(it, indexFileName()) }
+        val indexFile = indexDirectory?.let { RuleIndexLayout.hostsIndex(it) }
         var mapped = if (!rebuildSubscriptionIndex && indexFile?.exists() == true && indexFile.length() > 0) {
             runCatching { MappedSubscriptionRewriteIndex.load(indexFile) }
                 .onFailure { Log.w(TAG, "Existing subscription rewrite index invalid, will recompile", it) }
@@ -197,12 +197,13 @@ class RewriteRuleManager(
         subscriptionIndex?.close()
         subscriptionIndex = null
         indexDirectory?.let { directory ->
-            File(directory, indexFileName()).delete()
-            File(directory, LEGACY_INDEX_FILE_NAME).delete()
-            File(directory, "dns-subscription-rewrite.trie").delete()
-            File(directory, "https-subscription-rewrite.trie").delete()
+            // Only this type's artifacts: clearing rewrite rules must never
+            // invalidate the block / allow indexes sharing the same directory.
+            runCatching { RuleIndexLayout.hostsIndex(directory).delete() }
+            runCatching { RuleIndexLayout.legacyHostsFiles(directory).forEach { it.delete() } }
         }
     }
+
     override fun close() { subscriptionIndex?.close(); subscriptionIndex = null }
     private fun normalizeTarget(type: String, value: String): String? = when (type) {
         RewriteTargetType.CNAME -> AdGuardRuleParser.normalizeDomainForRewrite(value)
@@ -210,11 +211,8 @@ class RewriteRuleManager(
         else -> null
     }
 
-    private fun indexFileName() = "subscription-rewrite.trie"
-
     companion object {
         private const val TAG = "RewriteRuleMgr"
-        private const val LEGACY_INDEX_FILE_NAME = "subscription-rewrite.trie"
     }
 }
 

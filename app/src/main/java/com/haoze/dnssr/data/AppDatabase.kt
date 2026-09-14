@@ -58,7 +58,7 @@ import com.haoze.dnssr.ui.settings.SystemSettingsStore
         GoUrlRuleEntity::class, GoUrlRuleSourceEntity::class,
         AppTrafficDailyEntity::class
     ],
-    version = 35,
+    version = 36,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -94,7 +94,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_31_32,
                         MIGRATION_32_33,
                         MIGRATION_33_34,
-                        MIGRATION_34_35
+                        MIGRATION_34_35,
+                        MIGRATION_35_36
                     )
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .fallbackToDestructiveMigration(true)
@@ -366,6 +367,79 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_34_35 = object : Migration(34, 35) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_rewrite_rule_source_source` ON `rewrite_rule_source` (`source`)")
+            }
+        }
+
+        /**
+         * Splits subscriptions by rule type: `domain` (blacklist / whitelist)
+         * and `hosts` (address / CNAME rewriting).
+         *
+         * A URL may now back one subscription per type, so the unique index
+         * moves from `url` to `(url, kind)`. Legacy kinds are normalised, and
+         * subscriptions that hold both kinds of rules are split in two: the
+         * original row keeps its id and stays `domain`, while a new `hosts` row
+         * takes ownership of the subscription's rewriting rules by rebinding
+         * their `sub_<id>` source tag.
+         *
+         * No table is dropped, so foreign keys on `subscription_auto_update_item`
+         * are unaffected.
+         */
+        private val MIGRATION_35_36 = object : Migration(35, 36) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Drop the url-only unique index first: the split below inserts a
+                //    second row for the same url and would otherwise conflict.
+                db.execSQL("DROP INDEX IF EXISTS `index_subscription_url`")
+
+                // 2. Normalise stored kinds onto the two canonical values.
+                db.execSQL("UPDATE `subscription` SET `kind` = 'hosts' WHERE `kind` = 'rewrite'")
+                db.execSQL("UPDATE `subscription` SET `kind` = 'domain' WHERE `kind` NOT IN ('domain', 'hosts')")
+
+                // 3. Split subscriptions holding both kinds of rules.
+                val mixedIds = mutableListOf<Long>()
+                db.query(
+                    "SELECT s.id FROM `subscription` s WHERE s.kind = 'domain' " +
+                        "AND (EXISTS(SELECT 1 FROM `block_rule_source` b WHERE b.source = 'sub_' || s.id) " +
+                        "OR EXISTS(SELECT 1 FROM `allow_rule_source` a WHERE a.source = 'sub_' || s.id)) " +
+                        "AND EXISTS(SELECT 1 FROM `rewrite_rule_source` r WHERE r.source = 'sub_' || s.id)"
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        mixedIds.add(cursor.getLong(0))
+                    }
+                }
+
+                mixedIds.forEach { id ->
+                    db.execSQL(
+                        "INSERT INTO `subscription` (`url`, `name`, `sourceType`, `kind`, `enabled`, `ruleCount`, " +
+                            "`lastUpdated`, `addedAt`, `importState`, `importError`, `httpEtag`, `httpLastModified`, " +
+                            "`ruleSetHash`, `lastAttemptAt`, `consecutiveFailureCount`, `mirrorTemplate`, `mirrorFallback`, `groupId`) " +
+                            "SELECT s.url, s.name || ' (hosts)', s.sourceType, 'hosts', s.enabled, " +
+                            "(SELECT COUNT(*) FROM `rewrite_rule_source` r WHERE r.source = 'sub_' || s.id), " +
+                            "s.lastUpdated, s.addedAt, s.importState, s.importError, s.httpEtag, s.httpLastModified, " +
+                            "s.ruleSetHash, s.lastAttemptAt, s.consecutiveFailureCount, s.mirrorTemplate, s.mirrorFallback, s.groupId " +
+                            "FROM `subscription` s WHERE s.id = ?",
+                        arrayOf(id)
+                    )
+                    val newId = db.query("SELECT last_insert_rowid()").use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getLong(0) else -1L
+                    }
+                    if (newId > 0) {
+                        db.execSQL(
+                            "UPDATE `rewrite_rule_source` SET `source` = ? WHERE `source` = ?",
+                            arrayOf("sub_$newId", "sub_$id")
+                        )
+                        db.execSQL(
+                            "UPDATE `subscription` SET `ruleCount` = " +
+                                "(SELECT COUNT(*) FROM `block_rule_source` b WHERE b.source = 'sub_' || `subscription`.`id`) + " +
+                                "(SELECT COUNT(*) FROM `allow_rule_source` a WHERE a.source = 'sub_' || `subscription`.`id`) " +
+                                "WHERE `id` = ?",
+                            arrayOf(id)
+                        )
+                    }
+                }
+
+                // 4. Recreate the unique index over (url, kind).
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_subscription_url_kind` ON `subscription` (`url`, `kind`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_subscription_groupId` ON `subscription` (`groupId`)")
             }
         }
     }

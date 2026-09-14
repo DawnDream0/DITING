@@ -26,7 +26,10 @@ class BlockListManager(
     private val reloadCacheAfterChanges: Boolean = true
 ) {
 
-    private val cache = BlockRuleCache(indexDirectory?.let { File(it, "subscription-block.trie") })
+    private val cache = BlockRuleCache(
+        indexDirectory?.let { RuleIndexLayout.blockIndex(it) },
+        indexDirectory?.let { RuleIndexLayout.blockImportantIndex(it) }
+    )
     var onCacheChanged: (() -> Unit)? = null
 
     /**

@@ -120,17 +120,26 @@ class DomainPolicy(
         root.put("filterEnabled", isEnabledProvider())
 
         if (ruleIndexDirectory != null && ruleIndexDirectory.isDirectory) {
-            val blockTrie = File(ruleIndexDirectory, "subscription-block.trie")
+            // Paths come from RuleIndexLayout so this can never drift from the
+            // layout the caches actually write to.
+            val blockTrie = RuleIndexLayout.blockIndex(ruleIndexDirectory)
             if (blockTrie.exists() && blockTrie.length() > 0) {
                 root.put("blockTriePath", blockTrie.absolutePath)
             }
-            val impBlockTrie = File(ruleIndexDirectory, "subscription-block.trie.important")
+            val impBlockTrie = RuleIndexLayout.blockImportantIndex(ruleIndexDirectory)
             if (impBlockTrie.exists() && impBlockTrie.length() > 0) {
                 root.put("importantBlockTriePath", impBlockTrie.absolutePath)
             }
-            val allowTrie = File(ruleIndexDirectory, "subscription-allow.trie")
+            val allowTrie = RuleIndexLayout.allowIndex(ruleIndexDirectory)
             if (allowTrie.exists() && allowTrie.length() > 0) {
                 root.put("allowTriePath", allowTrie.absolutePath)
+            }
+            // Important allow rules of subscriptions live only in this index:
+            // AllowRuleCache drops them from the exported fallback list once the
+            // index exists, so omitting the path silently loses them.
+            val impAllowTrie = RuleIndexLayout.allowImportantIndex(ruleIndexDirectory)
+            if (impAllowTrie.exists() && impAllowTrie.length() > 0) {
+                root.put("importantAllowTriePath", impAllowTrie.absolutePath)
             }
         }
 

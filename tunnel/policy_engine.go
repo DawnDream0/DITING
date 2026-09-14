@@ -380,6 +380,7 @@ type policySnapshot struct {
 	globalAllow          map[string]struct{}
 	globalAllowWildcards []*wildcardMatcher
 	allowInverted        []invertedRule
+	importantAllowTrie   *dtriReader
 	allowTrie            *dtriReader
 
 	// Priority 6: Global regular block rules
@@ -542,6 +543,14 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 			return false, "__ALLOW__"
 		}
 	}
+	// Important subscription allow rules are indexed separately — once the
+	// index exists they are deliberately kept out of the snapshot's globalAllow
+	// list — and they outrank regular allow rules.
+	if s.importantAllowTrie != nil {
+		if hit, _ := s.importantAllowTrie.containsOrParent(domain); hit {
+			return false, "__ALLOW__"
+		}
+	}
 	if s.allowTrie != nil {
 		if hit, _ := s.allowTrie.containsOrParent(domain); hit {
 			return false, "__ALLOW__"
@@ -646,6 +655,7 @@ type ruleSnapshotJSON struct {
 	BlockTriePath          string                         `json:"blockTriePath"`
 	ImportantBlockTriePath string                         `json:"importantBlockTriePath"`
 	AllowTriePath          string                         `json:"allowTriePath"`
+	ImportantAllowTriePath string                         `json:"importantAllowTriePath"`
 	GlobalAllow            []string                       `json:"globalAllow"`
 	GlobalBlock            []string                       `json:"globalBlock"`
 	GlobalImportant        []string                       `json:"globalImportant"`
@@ -875,6 +885,9 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 	if req.AllowTriePath != "" {
 		neededPaths[req.AllowTriePath] = true
 	}
+	if req.ImportantAllowTriePath != "" {
+		neededPaths[req.ImportantAllowTriePath] = true
+	}
 
 	// Helper to obtain or open a dtriReader
 	getOrOpenTrie := func(path string) *dtriReader {
@@ -909,6 +922,7 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 
 	snap.blockTrie = getOrOpenTrie(req.BlockTriePath)
 	snap.importantBlockTrie = getOrOpenTrie(req.ImportantBlockTriePath)
+	snap.importantAllowTrie = getOrOpenTrie(req.ImportantAllowTriePath)
 	snap.allowTrie = getOrOpenTrie(req.AllowTriePath)
 
 	snap.hasRules = len(snap.globalImportant) > 0 ||
@@ -918,6 +932,7 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		len(snap.globalAllow) > 0 ||
 		len(snap.globalAllowWildcards) > 0 ||
 		len(snap.allowInverted) > 0 ||
+		snap.importantAllowTrie != nil ||
 		snap.allowTrie != nil ||
 		len(snap.globalBlock) > 0 ||
 		len(snap.globalBlockWildcards) > 0 ||

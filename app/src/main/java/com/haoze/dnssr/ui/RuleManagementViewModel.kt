@@ -57,7 +57,15 @@ class RuleManagementViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun importRules(uri: Uri, onResult: (String) -> Unit) {
+    /**
+     * Imports a local rule file as [kind] rules. The type must be chosen by the
+     * caller: a file is no longer classified automatically.
+     */
+    fun importRules(
+        uri: Uri,
+        kind: String = com.haoze.dnssr.data.entity.SubscriptionKind.DOMAIN,
+        onResult: (String) -> Unit
+    ) {
         runCatching {
             getApplication<Application>().contentResolver.takePersistableUriPermission(
                 uri,
@@ -66,7 +74,10 @@ class RuleManagementViewModel(application: Application) : AndroidViewModel(appli
         }
         observeResult(
             RuleOperationScheduler.enqueue(
-                getApplication(), RuleOperationType.IMPORT_RULES, uri = uri
+                getApplication(),
+                RuleOperationType.IMPORT_RULES,
+                uri = uri,
+                kind = com.haoze.dnssr.data.entity.SubscriptionKind.normalize(kind)
             ).id,
             onResult
         )

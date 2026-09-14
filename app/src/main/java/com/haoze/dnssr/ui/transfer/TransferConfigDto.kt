@@ -157,7 +157,7 @@ data class ImportedSubscription(
     val url: String,
     val scope: RuleScope,
     val groupName: String?,
-    val kind: String = SubscriptionKind.UNIFIED,
+    val kind: String = SubscriptionKind.DOMAIN,
     val mirrorTemplate: String? = null,
     val mirrorFallback: Boolean = true,
     val enabled: Boolean = true

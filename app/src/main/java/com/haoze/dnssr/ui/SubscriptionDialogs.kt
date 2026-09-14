@@ -15,6 +15,9 @@ import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.haoze.dnssr.data.entity.MirrorTemplateEntity
 import com.haoze.dnssr.data.entity.SubscriptionEntity
 import com.haoze.dnssr.data.entity.SubscriptionGroupEntity
+import com.haoze.dnssr.data.entity.SubscriptionKind
 import com.haoze.dnssr.data.entity.SubscriptionSourceType
 import com.haoze.dnssr.ui.components.AppAlertDialog as AlertDialog
 import com.haoze.dnssr.ui.components.SettingsCheckboxItem
@@ -142,11 +146,13 @@ internal fun AddSubscriptionDialog(
     onDismiss: () -> Unit,
     mirrorTemplates: List<MirrorTemplateEntity>,
     groups: List<SubscriptionGroupEntity>,
-    onConfirm: (url: String, name: String, mirrorTemplate: String?, mirrorFallback: Boolean, groupId: Long?, newGroupName: String?) -> Unit
+    initialKind: String = SubscriptionKind.DOMAIN,
+    onConfirm: (url: String, name: String, kind: String, mirrorTemplate: String?, mirrorFallback: Boolean, groupId: Long?, newGroupName: String?) -> Unit
 ) {
     var step by remember { mutableStateOf(1) }
     var url by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf(SubscriptionKind.normalize(initialKind)) }
     var useMirror by remember { mutableStateOf(false) }
     var mirrorTemplate by remember { mutableStateOf("") }
     var mirrorFallback by remember { mutableStateOf(true) }
@@ -161,11 +167,15 @@ internal fun AddSubscriptionDialog(
                 text = {
                     Column {
                         Text(
-                            text = localizedText("输入规则订阅链接（支持 AdGuard 过滤/白名单、hosts 覆写及复合规则），系统将自动识别并分类导入。"),
+                            text = localizedText("先选择订阅的规则类型，再填写订阅链接。类型决定该订阅只导入黑白名单规则，还是只导入 hosts 地址覆写规则。"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(16.dp))
+                        SubscriptionDialogCard(title = localizedText("规则类型")) {
+                            SubscriptionKindSelector(kind = kind, onKindChange = { kind = it })
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                         SubscriptionDialogCard(title = localizedText("订阅信息")) {
                             SubscriptionUrlField(
                                 url = url,
@@ -255,6 +265,7 @@ internal fun AddSubscriptionDialog(
                             onConfirm(
                                 url.trim(),
                                 name.trim(),
+                                kind,
                                 mirrorTemplate.trim().takeIf { useMirror },
                                 mirrorFallback,
                                 groupId,
@@ -273,6 +284,52 @@ internal fun AddSubscriptionDialog(
                 }
             )
         }
+    }
+}
+
+/**
+ * Rule type picker for a new subscription. The type is exclusive and chosen up
+ * front: it decides which rule tables the subscription is allowed to feed.
+ */
+@Composable
+private fun SubscriptionKindSelector(
+    kind: String,
+    onKindChange: (String) -> Unit
+) {
+    val options = SubscriptionKind.ALL
+    val selectedIndex = options.indexOf(SubscriptionKind.normalize(kind)).coerceAtLeast(0)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = selectedIndex == index,
+                    onClick = { onKindChange(option) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                    label = {
+                        Text(
+                            text = localizedText(SubscriptionKind.displayName(option)),
+                            maxLines = 1
+                        )
+                    }
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = localizedText(
+                if (SubscriptionKind.isHosts(kind)) {
+                    "仅导入 hosts 地址与 CNAME 覆写规则"
+                } else {
+                    "仅导入黑名单与白名单域名规则"
+                }
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -355,6 +412,12 @@ internal fun EditSubscriptionDialog(
         title = { Text(localizedText("编辑规则订阅")) },
         text = {
             Column {
+                Text(
+                    text = localizedText("规则类型：${SubscriptionKind.displayName(subscription.kind)}（不可修改，如需更换请删除后重新添加）"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
                 SubscriptionDialogCard(title = localizedText("订阅信息")) {
                     SubscriptionUrlField(url = url, onUrlChange = { url = it })
                     SettingsDivider()

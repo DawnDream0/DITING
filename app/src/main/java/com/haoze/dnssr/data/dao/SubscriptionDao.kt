@@ -111,6 +111,18 @@ interface SubscriptionDao {
     @Query("SELECT * FROM subscription WHERE url = :url LIMIT 1")
     suspend fun byUrl(url: String): SubscriptionEntity?
 
+    @Query("SELECT * FROM subscription WHERE url = :url AND kind = :kind LIMIT 1")
+    suspend fun byUrlAndKind(url: String, kind: String): SubscriptionEntity?
+
+    @Query("SELECT * FROM subscription WHERE kind = :kind ORDER BY addedAt DESC")
+    suspend fun byKind(kind: String): List<SubscriptionEntity>
+
+    @Query("SELECT * FROM subscription WHERE sourceType = 'remote' AND kind = :kind ORDER BY addedAt DESC")
+    suspend fun remoteByKind(kind: String): List<SubscriptionEntity>
+
+    @Query("UPDATE subscription SET kind = :kind WHERE id = :id")
+    suspend fun setKind(id: Long, kind: String)
+
     @Query("DELETE FROM subscription WHERE id = :id")
     suspend fun deleteById(id: Long)
 }

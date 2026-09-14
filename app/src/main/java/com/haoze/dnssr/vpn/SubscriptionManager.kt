@@ -76,7 +76,7 @@ class SubscriptionManager(
     suspend fun addSubscription(
         url: String,
         name: String? = null,
-        kind: String = SubscriptionKind.UNIFIED,
+        kind: String = SubscriptionKind.DOMAIN,
         mirrorTemplate: String? = null,
         mirrorFallback: Boolean = true,
         groupId: Long? = null
@@ -86,10 +86,12 @@ class SubscriptionManager(
         if (!trimmedUrl.startsWith("https://") && !trimmedUrl.startsWith("http://")) {
             return@withContext Result.failure(IllegalArgumentException("订阅链接必须使用 HTTP 或 HTTPS"))
         }
-        if (subscriptionDao.byUrl(trimmedUrl) != null) {
-            return@withContext Result.failure(IllegalArgumentException("该订阅链接已存在"))
+        val normalizedKind = SubscriptionKind.normalize(kind)
+        if (subscriptionDao.byUrlAndKind(trimmedUrl, normalizedKind) != null) {
+            return@withContext Result.failure(
+                IllegalArgumentException("该订阅链接已作为${SubscriptionKind.displayName(normalizedKind)}存在")
+            )
         }
-        val normalizedKind = kind
         val normalizedMirror = SubscriptionUrlHelper.normalizeMirrorTemplate(mirrorTemplate)
 
         _importing.value = true
@@ -118,6 +120,7 @@ class SubscriptionManager(
             val importResult = downloader.downloadAndImport(
                 url = trimmedUrl,
                 subscriptionId = id,
+                kind = normalizedKind,
                 enabled = true,
                 onProgressUpdate = { current, total -> progressReporter?.invoke(current, total) }
             )
@@ -165,7 +168,7 @@ class SubscriptionManager(
         url: String,
         name: String,
         groupId: Long? = null,
-        kind: String = SubscriptionKind.UNIFIED,
+        kind: String = SubscriptionKind.DOMAIN,
         mirrorTemplate: String? = null,
         mirrorFallback: Boolean = true
     ): Result<SubscriptionEntity> = withContext(Dispatchers.IO) {
@@ -177,8 +180,11 @@ class SubscriptionManager(
         if (!trimmedUrl.startsWith("https://") && !trimmedUrl.startsWith("http://")) {
             return@withContext Result.failure(IllegalArgumentException("订阅链接必须使用 HTTP 或 HTTPS"))
         }
-        if (subscriptionDao.byUrl(trimmedUrl) != null) {
-            return@withContext Result.failure(IllegalArgumentException("该订阅链接已存在"))
+        val normalizedKind = SubscriptionKind.normalize(kind)
+        if (subscriptionDao.byUrlAndKind(trimmedUrl, normalizedKind) != null) {
+            return@withContext Result.failure(
+                IllegalArgumentException("该订阅链接已作为${SubscriptionKind.displayName(normalizedKind)}存在")
+            )
         }
 
         try {
@@ -186,7 +192,7 @@ class SubscriptionManager(
                 url = trimmedUrl,
                 name = trimmedName,
                 sourceType = SubscriptionSourceType.REMOTE,
-                kind = kind,
+                kind = normalizedKind,
                 mirrorTemplate = mirrorTemplate,
                 mirrorFallback = mirrorFallback,
                 enabled = true,
@@ -202,7 +208,7 @@ class SubscriptionManager(
     suspend fun addLocalSubscription(
         sourceRef: String,
         name: String,
-        kind: String = SubscriptionKind.UNIFIED,
+        kind: String = SubscriptionKind.DOMAIN,
         contentLoader: () -> Reader
     ): Result<SubscriptionEntity> = withContext(Dispatchers.IO) {
         if (_importing.value) return@withContext Result.failure(IllegalStateException("正在导入中"))
@@ -211,9 +217,11 @@ class SubscriptionManager(
         if (trimmedName.isEmpty()) {
             return@withContext Result.failure(IllegalArgumentException("订阅名称不能为空"))
         }
-        val normalizedKind = kind
-        if (subscriptionDao.byUrl(sourceRef) != null) {
-            return@withContext Result.failure(IllegalArgumentException("该文件已作为订阅导入"))
+        val normalizedKind = SubscriptionKind.normalize(kind)
+        if (subscriptionDao.byUrlAndKind(sourceRef, normalizedKind) != null) {
+            return@withContext Result.failure(
+                IllegalArgumentException("该文件已作为${SubscriptionKind.displayName(normalizedKind)}导入")
+            )
         }
 
         _importing.value = true
@@ -238,8 +246,18 @@ class SubscriptionManager(
                 ruleStreamer.import(
                     reader,
                     ruleStorage.sourceTag(id),
+                    normalizedKind,
                     enabled = true,
-                    onEmpty = { throw SubscriptionUpdateException("订阅中没有可导入的有效规则", retryable = false) }
+                    onEmpty = { typeMismatchOnly ->
+                        throw SubscriptionUpdateException(
+                            if (typeMismatchOnly) {
+                                "文件中没有${SubscriptionKind.displayName(normalizedKind)}，请确认导入类型是否正确"
+                            } else {
+                                "订阅中没有可导入的有效规则"
+                            },
+                            retryable = false
+                        )
+                    }
                 ) { processed ->
                     progressReporter?.invoke(processed, processed)
                 }
@@ -325,9 +343,12 @@ class SubscriptionManager(
             subscriptionDao.update(subscription.copy(name = trimmedName, groupId = groupId))
             return@withContext Result.success(subscription.copy(name = trimmedName, groupId = groupId))
         }
-        val duplicate = subscriptionDao.byUrl(trimmedUrl)
+        val kind = SubscriptionKind.normalize(subscription.kind)
+        val duplicate = subscriptionDao.byUrlAndKind(trimmedUrl, kind)
         if (duplicate != null && duplicate.id != id) {
-            return@withContext Result.failure(IllegalArgumentException("This subscription URL already exists"))
+            return@withContext Result.failure(
+                IllegalArgumentException("该订阅链接已作为${SubscriptionKind.displayName(kind)}存在")
+            )
         }
 
         _importing.value = true
@@ -374,7 +395,7 @@ class SubscriptionManager(
                 lastAttemptAt = updatedAt,
                 consecutiveFailureCount = 0
             )
-            ruleStorage.publishStagedRules(id, updated)
+            ruleStorage.publishStagedRules(id, kind, updated)
             Result.success(updated)
         } catch (e: CancellationException) {
             ruleStorage.markUpdateCancelled(id)
@@ -442,7 +463,7 @@ class SubscriptionManager(
                         lastAttemptAt = now,
                         consecutiveFailureCount = 0
                     )
-                    ruleStorage.publishStagedRules(id, updated)
+                    ruleStorage.publishStagedRules(id, SubscriptionKind.normalize(subscription.kind), updated)
                     SubscriptionUpdateOutcome.Updated(download.summary.importedCount)
                 }
             }
@@ -490,7 +511,7 @@ class SubscriptionManager(
             ?: return@withContext Result.failure(IllegalArgumentException("订阅不存在"))
 
         try {
-            ruleStorage.setSubscriptionRulesEnabled(id, enabled)
+            ruleStorage.setSubscriptionRulesEnabled(id, SubscriptionKind.normalize(subscription.kind), enabled)
             subscriptionDao.setEnabled(id, enabled)
             Result.success(Unit)
         } catch (e: Exception) {

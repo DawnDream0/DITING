@@ -1,5 +1,6 @@
 package com.haoze.dnssr.vpn
 
+import com.haoze.dnssr.data.entity.SubscriptionKind
 import java.io.BufferedReader
 
 /**
@@ -7,6 +8,12 @@ import java.io.BufferedReader
  * subscription imports and local file imports: parses line by line, flushes
  * to the database every [chunkSize] rules, reports import progress, and
  * finally returns a [RuleImportSummary].
+ *
+ * The caller declares a subscription kind: a `domain` import keeps block and
+ * allow rules and drops rewriting rules, a `hosts` import does the opposite.
+ * Dropped rules are counted in [RuleImportSummary.typeSkippedCount] so the UI
+ * can tell "this source holds nothing of the requested type" apart from
+ * "the file is empty or malformed".
  */
 internal class CategorizedRuleStreamImporter(
     private val blockListManager: BlockListManager,
@@ -20,16 +27,21 @@ internal class CategorizedRuleStreamImporter(
 
     /**
      * [onEmpty] is invoked when there is not a single importable valid rule;
-     * the caller decides which exception to throw.
+     * its argument tells whether the source did contain rules of the other
+     * type. The caller decides which exception to throw.
      */
     suspend fun import(
         reader: BufferedReader,
         source: String,
+        kind: String,
         enabled: Boolean,
         refreshCache: Boolean = false,
-        onEmpty: () -> Nothing,
+        onEmpty: (typeMismatchOnly: Boolean) -> Nothing,
         onProgress: (suspend (processed: Int) -> Unit)? = null
     ): RuleImportSummary {
+        val acceptsDomain = SubscriptionKind.isDomain(kind)
+        val acceptsHosts = SubscriptionKind.isHosts(kind)
+
         val blockBatch = ArrayList<AdGuardRuleParser.ParsedRule>(chunkSize)
         val allowBatch = ArrayList<AdGuardRuleParser.ParsedRule>(chunkSize)
         val rewriteBatch = ArrayList<RewriteRule>(chunkSize)
@@ -39,6 +51,7 @@ internal class CategorizedRuleStreamImporter(
         var parsedRules = 0
         var invalid = 0
         var unsupported = 0
+        var typeSkipped = 0
         var processed = 0
 
         suspend fun flushBlock() {
@@ -73,18 +86,30 @@ internal class CategorizedRuleStreamImporter(
                 val parsed = AdGuardRuleParser.parseCategorizedLine(line)
                 invalid += parsed.invalidCount
                 unsupported += parsed.unsupportedCount
-                parsedRules += parsed.blockRules.size + parsed.allowRules.size + parsed.rewriteRules.size
-                for (rule in parsed.blockRules) {
-                    blockBatch += rule
-                    if (blockBatch.size == chunkSize) flushBlock()
+
+                val domainRuleCount = parsed.blockRules.size + parsed.allowRules.size
+                if (acceptsDomain) {
+                    parsedRules += domainRuleCount
+                    for (rule in parsed.blockRules) {
+                        blockBatch += rule
+                        if (blockBatch.size == chunkSize) flushBlock()
+                    }
+                    for (rule in parsed.allowRules) {
+                        allowBatch += rule
+                        if (allowBatch.size == chunkSize) flushAllow()
+                    }
+                } else {
+                    typeSkipped += domainRuleCount
                 }
-                for (rule in parsed.allowRules) {
-                    allowBatch += rule
-                    if (allowBatch.size == chunkSize) flushAllow()
-                }
-                for (rule in parsed.rewriteRules) {
-                    rewriteBatch += rule
-                    if (rewriteBatch.size == chunkSize) flushRewrite()
+
+                if (acceptsHosts) {
+                    parsedRules += parsed.rewriteRules.size
+                    for (rule in parsed.rewriteRules) {
+                        rewriteBatch += rule
+                        if (rewriteBatch.size == chunkSize) flushRewrite()
+                    }
+                } else {
+                    typeSkipped += parsed.rewriteRules.size
                 }
             }
         }
@@ -92,7 +117,7 @@ internal class CategorizedRuleStreamImporter(
         flushAllow()
         flushRewrite()
 
-        if (parsedRules == 0) onEmpty()
+        if (parsedRules == 0) onEmpty(typeSkipped > 0)
         val totalInserted = insertedBlock + insertedAllow + insertedRewrite
         return RuleImportSummary(
             blockCount = insertedBlock,
@@ -100,7 +125,8 @@ internal class CategorizedRuleStreamImporter(
             rewriteCount = insertedRewrite,
             duplicateCount = (parsedRules - totalInserted).coerceAtLeast(0),
             invalidCount = invalid,
-            unsupportedCount = unsupported
+            unsupportedCount = unsupported,
+            typeSkippedCount = typeSkipped
         )
     }
 }

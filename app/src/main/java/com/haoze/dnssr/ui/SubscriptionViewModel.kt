@@ -115,7 +115,7 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
     fun addSubscription(
         url: String,
         name: String? = null,
-        kind: String = com.haoze.dnssr.data.entity.SubscriptionKind.UNIFIED,
+        kind: String = com.haoze.dnssr.data.entity.SubscriptionKind.DOMAIN,
         mirrorTemplate: String? = null,
         mirrorFallback: Boolean = true,
         groupId: Long? = null,
@@ -255,7 +255,7 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
                 val scope = RuleScope.DNS
                 var hasRewrite = false
                 subscriptions.forEach { subscription ->
-                    if (subscription.kind == com.haoze.dnssr.data.entity.SubscriptionKind.REWRITE) {
+                    if (com.haoze.dnssr.data.entity.SubscriptionKind.isHosts(subscription.kind)) {
                         hasRewrite = true
                     }
                     subscriptionManagerFor(scope).deleteSubscription(subscription.id)
@@ -379,7 +379,7 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
                 withContext(Dispatchers.IO) {
                     val subscription = AppDatabase.getInstance(getApplication<Application>()).subscriptionDao().byId(id)
                     subscriptionManager().deleteSubscription(id)
-                    val isRewrite = subscription?.kind == com.haoze.dnssr.data.entity.SubscriptionKind.REWRITE
+                    val isRewrite = com.haoze.dnssr.data.entity.SubscriptionKind.isHosts(subscription?.kind)
                     refreshSubscriptionRuleIndexes(
                         isRewrite,
                         RuleScope.DNS
@@ -413,7 +413,7 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
                 val subscription = AppDatabase.getInstance(getApplication<Application>()).subscriptionDao().byId(id)
                 val result = subscriptionManager().setSubscriptionEnabled(id, enabled)
                 if (result.isSuccess) {
-                    val isRewrite = subscription?.kind == com.haoze.dnssr.data.entity.SubscriptionKind.REWRITE
+                    val isRewrite = com.haoze.dnssr.data.entity.SubscriptionKind.isHosts(subscription?.kind)
                     refreshSubscriptionRuleIndexes(
                         isRewrite,
                         RuleScope.DNS

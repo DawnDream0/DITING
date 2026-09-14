@@ -18,7 +18,10 @@ class AllowListManager(
     private val reloadCacheAfterChanges: Boolean = true
 ) {
 
-    private val cache = AllowRuleCache(indexDirectory?.let { File(it, "subscription-allow.trie") })
+    private val cache = AllowRuleCache(
+        indexDirectory?.let { RuleIndexLayout.allowIndex(it) },
+        indexDirectory?.let { RuleIndexLayout.allowImportantIndex(it) }
+    )
     var onCacheChanged: (() -> Unit)? = null
 
     suspend fun refreshCache(forceRebuild: Boolean = false) {

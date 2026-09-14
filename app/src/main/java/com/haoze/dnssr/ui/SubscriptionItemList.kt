@@ -86,12 +86,7 @@ internal fun SubscriptionItem(
                         MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
-                val kindLabel = when (subscription.kind) {
-                    SubscriptionKind.REWRITE -> "hosts 覆写"
-                    SubscriptionKind.BLOCK -> "DNS 过滤"
-                    SubscriptionKind.ALLOW -> "白名单"
-                    else -> "规则订阅"
-                }
+                val kindLabel = if (SubscriptionKind.isHosts(subscription.kind)) "hosts 规则" else "黑白名单规则"
                 Text(
                     text = buildString {
                         append(localizedText(kindLabel))

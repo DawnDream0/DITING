@@ -259,9 +259,7 @@ private fun subscriptionManagerFor(
     database: AppDatabase,
     scope: RuleScope = RuleScope.DNS
 ): SubscriptionManager {
-    val ruleIndexDirectory = java.io.File(context.filesDir, "rule-index").let {
-        if (scope == RuleScope.HTTPS) java.io.File(it, "https") else it
-    }
+    val ruleIndexDirectory = RuleIndexLayout.scopeDirectory(context.filesDir, scope)
     return SubscriptionManager(
         database,
         database.subscriptionDao(),

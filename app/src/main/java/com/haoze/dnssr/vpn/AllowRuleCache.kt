@@ -29,7 +29,10 @@ data class AllowAppRuleBucket(
         wildcardRules.isEmpty() && importantWildcardRules.isEmpty()
 }
 
-class AllowRuleCache(private val indexFile: File? = null) {
+class AllowRuleCache(
+    private val indexFile: File? = null,
+    private val importantIndexFile: File? = null
+) {
 
     @Volatile
     private var customRules: Set<String> = emptySet()
@@ -111,7 +114,7 @@ class AllowRuleCache(private val indexFile: File? = null) {
         }
 
         val targetFile = indexFile
-        val importantFile = targetFile?.let { File(it.parentFile, it.name + ".important") }
+        val importantFile = importantIndexFile
 
         var mapped = targetFile?.let { file ->
             if (!forceRebuild && file.exists() && file.length() > 0) {

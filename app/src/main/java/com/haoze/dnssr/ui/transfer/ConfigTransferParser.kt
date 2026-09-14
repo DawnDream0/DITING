@@ -135,7 +135,7 @@ object ConfigTransferParser {
                 RuleScope.DNS.storageValue, RuleScope.HTTPS.storageValue -> RuleScope.DNS
                 else -> throw IllegalArgumentException("配置中包含不支持的订阅作用域：$value")
             }
-            val kind = obj.optString("kind", SubscriptionKind.UNIFIED)
+            val kind = obj.optString("kind", SubscriptionKind.DOMAIN)
             val mirrorTemplate = obj.optString("mirrorTemplate", "").trim().takeIf { it.isNotEmpty() }
             val mirrorFallback = obj.optBoolean("mirrorFallback", true)
             val enabled = obj.optBoolean("enabled", true)
