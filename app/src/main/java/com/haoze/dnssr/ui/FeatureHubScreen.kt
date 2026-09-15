@@ -4,13 +4,13 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Rule
 import androidx.compose.material.icons.automirrored.filled.AltRoute
@@ -125,6 +127,9 @@ internal fun FeatureHubScreen(
     val context = LocalContext.current
     var showLogLongPressHint by remember {
         mutableStateOf(!SystemSettingsStore.isSettingsGuideAcknowledged(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID))
+    }
+    val logLongPressHint = remember(context) {
+        context.getString(R.string.feature_hub_long_press_hint)
     }
     val visibleFeatures by remember(context) {
         OptionalFeaturesStore.init(context)
@@ -241,36 +246,31 @@ internal fun FeatureHubScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         visibleCategories.forEach { category ->
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item(
+                key = "cat_${category.title}",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "header"
+            ) {
                 Text(
                     text = category.title,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
                 )
             }
-            category.items.chunked(2).forEach { rowItems ->
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Min),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        rowItems.forEach { hubItem ->
-                            FeatureHubCard(
-                                item = hubItem,
-                                showLogLongPressHint = showLogLongPressHint,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                            )
-                        }
-                        if (rowItems.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
+            items(
+                items = category.items,
+                key = { it.title },
+                contentType = { "card" }
+            ) { hubItem ->
+                FeatureHubCard(
+                    item = hubItem,
+                    showLogLongPressHint = showLogLongPressHint,
+                    logLongPressHint = logLongPressHint,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -280,6 +280,7 @@ internal fun FeatureHubScreen(
 private fun FeatureHubCard(
     item: FeatureHubItem,
     showLogLongPressHint: Boolean,
+    logLongPressHint: String,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -300,6 +301,22 @@ private fun FeatureHubCard(
         label = "feature_card_bounce"
     )
 
+    val hasLongClick = item.onLongClick != null
+    val clickModifier = if (hasLongClick) {
+        Modifier.combinedClickable(
+            interactionSource = interactionSource,
+            indication = LocalIndication.current,
+            onClick = item.onClick,
+            onLongClick = item.onLongClick
+        )
+    } else {
+        Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = LocalIndication.current,
+            onClick = item.onClick
+        )
+    }
+
     Card(
         shape = SettingsCornerShape,
         colors = CardDefaults.cardColors(
@@ -311,19 +328,14 @@ private fun FeatureHubCard(
                 scaleY = scale
             }
             .clip(SettingsCornerShape)
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                onClick = item.onClick,
-                onLongClick = item.onLongClick
-            )
-            .heightIn(min = 80.dp)
+            .then(clickModifier)
+            .height(84.dp)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .fillMaxSize()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Icon(
@@ -332,21 +344,26 @@ private fun FeatureHubCard(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp)
                 )
-                if (item.title == stringResource(R.string.feature_hub_logs) && showLogLongPressHint) {
+                if (hasLongClick && showLogLongPressHint) {
                     Text(
-                        text = stringResource(R.string.feature_hub_long_press_hint),
+                        text = logLongPressHint,
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .combinedClickable(
                                 onClick = {},
-                                onLongClick = { item.onLongClick?.invoke() }
+                                onLongClick = item.onLongClick
                             )
                     )
                 }
             }
-            Text(text = item.title, style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
