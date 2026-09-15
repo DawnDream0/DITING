@@ -160,10 +160,9 @@ fun FloatingNavigationBar(
     if (pagerProgress != null) {
         LaunchedEffect(dampedDragAnimation) {
             snapshotFlow { pagerProgress() }
-                .distinctUntilChanged()
-                .collectLatest { progress ->
+                .collect { progress ->
                     if (!isUserDragging) {
-                        dampedDragAnimation.updateValue(progress.fastCoerceIn(0f, (tabsCount - 1).toFloat()))
+                        dampedDragAnimation.snapToValue(progress.fastCoerceIn(0f, (tabsCount - 1).toFloat()))
                     }
                 }
         }
@@ -172,14 +171,6 @@ fun FloatingNavigationBar(
             if (!isUserDragging) {
                 currentIndex = selectedPage
                 dampedDragAnimation.animateToValue(selectedPage.toFloat())
-            }
-        }
-    }
-
-    LaunchedEffect(dampedDragAnimation) {
-        snapshotFlow { currentIndex }.drop(1).collectLatest { index ->
-            if (!isUserDragging) {
-                dampedDragAnimation.animateToValue(index.toFloat())
             }
         }
     }
@@ -200,10 +191,6 @@ fun FloatingNavigationBar(
     val deviceTilt = rememberDeviceTilt(enabled = isGlassEnabled)
     val baseHighlight = rememberGravityRotatedHighlight(IosIndicatorSpecular, extraDegrees = -45f, tiltState = deviceTilt)
     val pillHighlight = rememberGravityRotatedHighlight(IosIndicatorSpecular, extraDegrees = 90f, tiltState = deviceTilt)
-
-    val animValue = dampedDragAnimation.value
-    val tab0Weight = (1f - animValue).fastCoerceIn(0f, 1f)
-    val tab1Weight = animValue.fastCoerceIn(0f, 1f)
 
     Box(
         modifier = modifier
@@ -425,8 +412,9 @@ fun FloatingNavigationBar(
             ) {
                 FloatingBottomBarTab(
                     index = 0,
-                    weight = tab0Weight,
-                    pressProgress = dampedDragAnimation.pressProgress,
+                    isSelected = selectedPage == 0,
+                    weight = { (1f - dampedDragAnimation.value).fastCoerceIn(0f, 1f) },
+                    pressProgress = { dampedDragAnimation.pressProgress },
                     icon = Icons.Default.Home,
                     label = localizedText("首页"),
                     accentColor = if (isGlassEnabled) MaterialTheme.colorScheme.onPrimaryContainer else accentColor,
@@ -435,8 +423,9 @@ fun FloatingNavigationBar(
                 )
                 FloatingBottomBarTab(
                     index = 1,
-                    weight = tab1Weight,
-                    pressProgress = dampedDragAnimation.pressProgress,
+                    isSelected = selectedPage == 1,
+                    weight = { dampedDragAnimation.value.fastCoerceIn(0f, 1f) },
+                    pressProgress = { dampedDragAnimation.pressProgress },
                     icon = Icons.Default.Apps,
                     label = localizedText("功能中心"),
                     accentColor = if (isGlassEnabled) MaterialTheme.colorScheme.onPrimaryContainer else accentColor,
@@ -452,8 +441,9 @@ fun FloatingNavigationBar(
 @Composable
 private fun RowScope.FloatingBottomBarTab(
     index: Int,
-    weight: Float,
-    pressProgress: Float,
+    isSelected: Boolean,
+    weight: () -> Float,
+    pressProgress: () -> Float,
     icon: ImageVector,
     label: String,
     accentColor: Color,
@@ -461,42 +451,71 @@ private fun RowScope.FloatingBottomBarTab(
     onSelect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val dynamicColor = lerp(contentColor, accentColor, weight)
-    val dynamicScale = 1f + 0.05f * weight * pressProgress
-
     Column(
         modifier = modifier
             .semantics {
                 role = Role.Tab
-                selected = weight > 0.5f
+                selected = isSelected
                 onClick(label = label) { onSelect(); true }
             }
             .fillMaxHeight()
             .weight(1f)
             .graphicsLayer {
+                val dynamicScale = 1f + 0.05f * weight() * pressProgress()
                 scaleX = dynamicScale
                 scaleY = dynamicScale
             },
         verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = dynamicColor,
-            modifier = Modifier.size(22.dp)
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
-                lineHeight = 14.sp
-            ),
-            color = dynamicColor,
-            fontWeight = if (weight > 0.5f) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis
-        )
+        Box(
+            modifier = Modifier.size(22.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = contentColor,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = (1f - weight()).fastCoerceIn(0f, 1f) }
+            )
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = weight().fastCoerceIn(0f, 1f) }
+            )
+        }
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp
+                ),
+                color = contentColor,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.graphicsLayer { alpha = (1f - weight()).fastCoerceIn(0f, 1f) }
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp
+                ),
+                color = accentColor,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.graphicsLayer { alpha = weight().fastCoerceIn(0f, 1f) }
+            )
+        }
     }
 }

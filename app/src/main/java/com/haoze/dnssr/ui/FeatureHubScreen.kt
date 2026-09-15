@@ -131,103 +131,107 @@ internal fun FeatureHubScreen(
         OptionalFeaturesStore.visibleFeaturesFlow
     }.collectAsState()
 
-    val categories = listOf(
-        FeatureHubCategory(
-            stringResource(R.string.feature_hub_dns_services),
-            buildList {
-                add(FeatureHubItem(stringResource(R.string.feature_hub_provider_management), Icons.Filled.Dns, onNavigateToProviderManagement))
-                add(FeatureHubItem(stringResource(R.string.feature_hub_bootstrap_settings), Icons.Filled.Public, onNavigateToBootstrapSettings))
-                if (OptionalFeature.RESOLUTION_MODE.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_resolution_mode), Icons.AutoMirrored.Filled.AltRoute, onNavigateToRaceModeSettings))
+    val categories = remember(visibleFeatures, context) {
+        listOf(
+            FeatureHubCategory(
+                context.getString(R.string.feature_hub_dns_services),
+                buildList {
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_provider_management), Icons.Filled.Dns, onNavigateToProviderManagement))
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_bootstrap_settings), Icons.Filled.Public, onNavigateToBootstrapSettings))
+                    if (OptionalFeature.RESOLUTION_MODE.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_resolution_mode), Icons.AutoMirrored.Filled.AltRoute, onNavigateToRaceModeSettings))
+                    }
                 }
-            }
-        ),
-        FeatureHubCategory(
-            stringResource(R.string.feature_hub_policies_rules),
-            listOf(
-                FeatureHubItem(stringResource(R.string.feature_hub_rule_control), Icons.AutoMirrored.Filled.Rule, onNavigateToRuleControl),
-                FeatureHubItem(stringResource(R.string.feature_hub_blacklist), Icons.Filled.Block, onNavigateToBlacklist),
-                FeatureHubItem(stringResource(R.string.feature_hub_whitelist), Icons.Filled.VerifiedUser, onNavigateToWhitelist),
-                FeatureHubItem(stringResource(R.string.feature_hub_rewrite_list), Icons.AutoMirrored.Filled.AltRoute, onNavigateToRewriteList)
-            )
-        ),
-        FeatureHubCategory(
-            stringResource(R.string.feature_hub_network_control),
-            buildList {
-                if (OptionalFeature.TRAFFIC_STATS.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_traffic_stats), Icons.Filled.DataUsage, onNavigateToTrafficStats))
-                }
-                if (OptionalFeature.APP_RULES.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_app_rules), Icons.Filled.Android, onNavigateToAppRules))
-                }
-                add(FeatureHubItem(stringResource(R.string.feature_hub_blocked_apps), Icons.Filled.WifiOff, onNavigateToBlockedApps))
-                add(FeatureHubItem(stringResource(R.string.feature_hub_excluded_apps), Icons.Filled.Apps, onNavigateToExcludedApps))
-                if (OptionalFeature.OUTBOUND_PROXY.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_outbound_proxy), Icons.Filled.Lan, onNavigateToOutboundProxy))
-                }
-            }
-        ),
-        FeatureHubCategory(
-            stringResource(R.string.feature_hub_advanced_tools),
-            buildList {
-                if (OptionalFeature.HTTPS_INSPECTION.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_https_inspection), Icons.Filled.Troubleshoot, onNavigateToHttpInspection))
-                }
-                if (OptionalFeature.NETWORK_TOOLS.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_network_tools), Icons.Filled.NetworkCheck, onNavigateToNetworkTools))
-                }
-                if (OptionalFeature.AGENT_API.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_agent_api), Icons.Filled.SmartToy, onNavigateToAgentApiSettings))
-                }
-            }
-        ),
-        FeatureHubCategory(
-            stringResource(R.string.feature_hub_interface_management),
-            buildList {
-                if (OptionalFeature.APPEARANCE.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_appearance), Icons.Filled.Palette, onNavigateToAppearanceSettings))
-                }
-                if (OptionalFeature.SERVICE_DISPLAY.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_service_display), Icons.Filled.Visibility, onNavigateToHomeProviderVisibility))
-                }
-                add(FeatureHubItem(stringResource(R.string.feature_hub_optional_features), Icons.Filled.Extension, onNavigateToOptionalFeatures))
-                add(
-                    FeatureHubItem(
-                        title = stringResource(R.string.feature_hub_logs),
-                        icon = Icons.Filled.History,
-                        onClick = onNavigateToLogs,
-                        onLongClick = {
-                            SystemSettingsStore.acknowledgeSettingsGuide(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID)
-                            showLogLongPressHint = false
-                            onNavigateToLogRetentionSettings()
-                        }
-                    )
+            ),
+            FeatureHubCategory(
+                context.getString(R.string.feature_hub_policies_rules),
+                listOf(
+                    FeatureHubItem(context.getString(R.string.feature_hub_rule_control), Icons.AutoMirrored.Filled.Rule, onNavigateToRuleControl),
+                    FeatureHubItem(context.getString(R.string.feature_hub_blacklist), Icons.Filled.Block, onNavigateToBlacklist),
+                    FeatureHubItem(context.getString(R.string.feature_hub_whitelist), Icons.Filled.VerifiedUser, onNavigateToWhitelist),
+                    FeatureHubItem(context.getString(R.string.feature_hub_rewrite_list), Icons.AutoMirrored.Filled.AltRoute, onNavigateToRewriteList)
                 )
-                add(FeatureHubItem(stringResource(R.string.feature_hub_other_settings), Icons.Filled.Settings, onNavigateToSettings))
-            }
-        ),
-        FeatureHubCategory(
-            stringResource(R.string.feature_hub_data_and_updates),
-            buildList {
-                add(FeatureHubItem(stringResource(R.string.feature_hub_data_management), Icons.Filled.ImportExport, onNavigateToDataManagement))
-                if (OptionalFeature.DATA_CLEANUP.key in visibleFeatures) {
-                    add(FeatureHubItem(stringResource(R.string.feature_hub_data_cleanup), Icons.Filled.DeleteSweep, onNavigateToDataCleanup))
+            ),
+            FeatureHubCategory(
+                context.getString(R.string.feature_hub_network_control),
+                buildList {
+                    if (OptionalFeature.TRAFFIC_STATS.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_traffic_stats), Icons.Filled.DataUsage, onNavigateToTrafficStats))
+                    }
+                    if (OptionalFeature.APP_RULES.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_app_rules), Icons.Filled.Android, onNavigateToAppRules))
+                    }
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_blocked_apps), Icons.Filled.WifiOff, onNavigateToBlockedApps))
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_excluded_apps), Icons.Filled.Apps, onNavigateToExcludedApps))
+                    if (OptionalFeature.OUTBOUND_PROXY.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_outbound_proxy), Icons.Filled.Lan, onNavigateToOutboundProxy))
+                    }
                 }
-                add(FeatureHubItem(stringResource(R.string.feature_hub_updates_support), Icons.Filled.Update, onNavigateToAppUpdate))
-            }
-        ),
-        FeatureHubCategory(
-            stringResource(R.string.feature_hub_about_app),
-            listOf(
-                FeatureHubItem(stringResource(R.string.feature_hub_app_info), Icons.Filled.Info, onNavigateToAbout),
-                FeatureHubItem(stringResource(R.string.feature_hub_sponsor), Icons.Filled.Favorite, onNavigateToSponsor),
-                FeatureHubItem(stringResource(R.string.feature_hub_sponsor_list), Icons.Filled.WorkspacePremium, onNavigateToSponsorList),
-                FeatureHubItem(stringResource(R.string.feature_hub_contributors), Icons.Filled.Groups, onNavigateToCoBuilderList)
+            ),
+            FeatureHubCategory(
+                context.getString(R.string.feature_hub_advanced_tools),
+                buildList {
+                    if (OptionalFeature.HTTPS_INSPECTION.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_https_inspection), Icons.Filled.Troubleshoot, onNavigateToHttpInspection))
+                    }
+                    if (OptionalFeature.NETWORK_TOOLS.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_network_tools), Icons.Filled.NetworkCheck, onNavigateToNetworkTools))
+                    }
+                    if (OptionalFeature.AGENT_API.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_agent_api), Icons.Filled.SmartToy, onNavigateToAgentApiSettings))
+                    }
+                }
+            ),
+            FeatureHubCategory(
+                context.getString(R.string.feature_hub_interface_management),
+                buildList {
+                    if (OptionalFeature.APPEARANCE.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_appearance), Icons.Filled.Palette, onNavigateToAppearanceSettings))
+                    }
+                    if (OptionalFeature.SERVICE_DISPLAY.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_service_display), Icons.Filled.Visibility, onNavigateToHomeProviderVisibility))
+                    }
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_optional_features), Icons.Filled.Extension, onNavigateToOptionalFeatures))
+                    add(
+                        FeatureHubItem(
+                            title = context.getString(R.string.feature_hub_logs),
+                            icon = Icons.Filled.History,
+                            onClick = onNavigateToLogs,
+                            onLongClick = {
+                                SystemSettingsStore.acknowledgeSettingsGuide(context, SettingsGuides.HOME_LOG_LONG_PRESS_ID)
+                                showLogLongPressHint = false
+                                onNavigateToLogRetentionSettings()
+                            }
+                        )
+                    )
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_other_settings), Icons.Filled.Settings, onNavigateToSettings))
+                }
+            ),
+            FeatureHubCategory(
+                context.getString(R.string.feature_hub_data_and_updates),
+                buildList {
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_data_management), Icons.Filled.ImportExport, onNavigateToDataManagement))
+                    if (OptionalFeature.DATA_CLEANUP.key in visibleFeatures) {
+                        add(FeatureHubItem(context.getString(R.string.feature_hub_data_cleanup), Icons.Filled.DeleteSweep, onNavigateToDataCleanup))
+                    }
+                    add(FeatureHubItem(context.getString(R.string.feature_hub_updates_support), Icons.Filled.Update, onNavigateToAppUpdate))
+                }
+            ),
+            FeatureHubCategory(
+                context.getString(R.string.feature_hub_about_app),
+                listOf(
+                    FeatureHubItem(context.getString(R.string.feature_hub_app_info), Icons.Filled.Info, onNavigateToAbout),
+                    FeatureHubItem(context.getString(R.string.feature_hub_sponsor), Icons.Filled.Favorite, onNavigateToSponsor),
+                    FeatureHubItem(context.getString(R.string.feature_hub_sponsor_list), Icons.Filled.WorkspacePremium, onNavigateToSponsorList),
+                    FeatureHubItem(context.getString(R.string.feature_hub_contributors), Icons.Filled.Groups, onNavigateToCoBuilderList)
+                )
             )
         )
-    )
+    }
 
-    val visibleCategories = categories.filter { it.items.isNotEmpty() }
+    val visibleCategories = remember(categories) {
+        categories.filter { it.items.isNotEmpty() }
+    }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
