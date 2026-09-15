@@ -312,17 +312,21 @@ func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTim
 		return
 	}
 
-	// Detect upstream DNS blocking (e.g., NextDNS/AdGuard DNS returning 0.0.0.0)
-	if isUpstreamBlocked(resp) {
-		response := BuildForwardedResponse(queryInfo, resp)
-		e.writeToTUN(response)
-		e.totalQueries.Add(1)
-		e.blockedQueries.Add(1)
+	var respMsg dns.Msg
+	hasUnpacked := (respMsg.Unpack(resp) == nil)
 
-		elapsed := time.Since(startTime).Milliseconds()
-		logf("BLOCKED: %s (by: upstream_dns, app: %s)", queryInfo.Domain, appName)
-		e.notifyLog(queryInfo.Domain, true, queryInfo.QueryType, elapsed, appName, "", "upstream_dns", "", false)
-		return
+	blocked := false
+	resolvedIPs := ""
+	if hasUnpacked {
+		blocked = isUpstreamBlockedMsg(&respMsg)
+		if !blocked {
+			resolvedIPs = resolvedAddressesMsg(&respMsg)
+		}
+	} else {
+		blocked = isUpstreamBlocked(resp)
+		if !blocked {
+			resolvedIPs = resolvedAddresses(resp)
+		}
 	}
 
 	response := BuildForwardedResponse(queryInfo, resp)
@@ -330,7 +334,14 @@ func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTim
 	e.totalQueries.Add(1)
 
 	elapsed := time.Since(startTime).Milliseconds()
-	e.notifyLog(queryInfo.Domain, false, queryInfo.QueryType, elapsed, appName, resolvedAddresses(resp), "", "", isCached)
+	if blocked {
+		e.blockedQueries.Add(1)
+		logf("BLOCKED: %s (by: upstream_dns, app: %s)", queryInfo.Domain, appName)
+		e.notifyLog(queryInfo.Domain, true, queryInfo.QueryType, elapsed, appName, "", "upstream_dns", "", false)
+		return
+	}
+
+	e.notifyLog(queryInfo.Domain, false, queryInfo.QueryType, elapsed, appName, resolvedIPs, "", "", isCached)
 }
 
 // isUpstreamBlocked reports whether a DNS response indicates the domain was
@@ -343,8 +354,12 @@ func isUpstreamBlocked(rawResp []byte) bool {
 	if err := msg.Unpack(rawResp); err != nil {
 		return false
 	}
+	return isUpstreamBlockedMsg(&msg)
+}
 
-	if len(msg.Answer) == 0 {
+// isUpstreamBlockedMsg is the zero-copy variant operating on an already unpacked *dns.Msg.
+func isUpstreamBlockedMsg(msg *dns.Msg) bool {
+	if msg == nil || len(msg.Answer) == 0 {
 		return false
 	}
 
@@ -373,6 +388,14 @@ func isUpstreamBlocked(rawResp []byte) bool {
 func resolvedAddresses(rawResponse []byte) string {
 	var response dns.Msg
 	if err := response.Unpack(rawResponse); err != nil {
+		return ""
+	}
+	return resolvedAddressesMsg(&response)
+}
+
+// resolvedAddressesMsg is the zero-copy variant operating on an already unpacked *dns.Msg.
+func resolvedAddressesMsg(response *dns.Msg) string {
+	if response == nil {
 		return ""
 	}
 	seen := make(map[string]struct{})

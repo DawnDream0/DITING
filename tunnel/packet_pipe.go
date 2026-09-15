@@ -53,13 +53,25 @@ func newPacketPipe() *packetPipe {
 	}
 }
 
+const pipePooledMaxPacketBytes = 2 * defaultTunMTU
+
+var pipePacketPool = sync.Pool{
+	New: func() any {
+		return make([]byte, defaultTunMTU)
+	},
+}
+
 // Read is called by the gVisor iobased endpoint to fetch the next
 // inbound IP packet. Blocks until a packet is available or the pipe
 // is closed.
 func (p *packetPipe) Read(buf []byte) (int, error) {
 	select {
 	case pkt := <-p.inbound:
-		return copy(buf, pkt), nil
+		n := copy(buf, pkt)
+		if cap(pkt) <= pipePooledMaxPacketBytes && cap(pkt) >= defaultTunMTU {
+			pipePacketPool.Put(pkt[:0])
+		}
+		return n, nil
 	case <-p.done:
 		return 0, io.EOF
 	}
@@ -70,10 +82,22 @@ func (p *packetPipe) Read(buf []byte) (int, error) {
 // io.Writer contract even on drop because packet loss is a normal
 // condition in network stacks (TCP retransmits cover it).
 func (p *packetPipe) Write(buf []byte) (int, error) {
-	pkt := make([]byte, len(buf))
-	copy(pkt, buf)
+	var pkt []byte
+	pooled := false
+	if len(buf) <= pipePooledMaxPacketBytes {
+		pooledBuf := pipePacketPool.Get().([]byte)
+		pkt = append(pooledBuf[:0], buf...)
+		pooled = true
+	} else {
+		pkt = make([]byte, len(buf))
+		copy(pkt, buf)
+	}
+
 	select {
 	case <-p.done:
+		if pooled {
+			pipePacketPool.Put(pkt[:0])
+		}
 		return len(buf), nil
 	default:
 	}
@@ -84,7 +108,13 @@ func (p *packetPipe) Write(buf []byte) (int, error) {
 			logf("packetPipe: outbound write #%d (size=%d)", c, len(buf))
 		}
 	case <-p.done:
+		if pooled {
+			pipePacketPool.Put(pkt[:0])
+		}
 	default:
+		if pooled {
+			pipePacketPool.Put(pkt[:0])
+		}
 		// queue full; drop.
 		c := p.outboundDropped.Add(1)
 		if c <= 3 {
@@ -103,12 +133,28 @@ func (p *packetPipe) Push(pkt []byte) {
 		return
 	default:
 	}
-	buf := make([]byte, len(pkt))
-	copy(buf, pkt)
+
+	var buf []byte
+	pooled := false
+	if len(pkt) <= pipePooledMaxPacketBytes {
+		pooledBuf := pipePacketPool.Get().([]byte)
+		buf = append(pooledBuf[:0], pkt...)
+		pooled = true
+	} else {
+		buf = make([]byte, len(pkt))
+		copy(buf, pkt)
+	}
+
 	select {
 	case p.inbound <- buf:
 	case <-p.done:
+		if pooled {
+			pipePacketPool.Put(buf[:0])
+		}
 	default:
+		if pooled {
+			pipePacketPool.Put(buf[:0])
+		}
 		// queue full; drop.
 		c := p.inboundDropped.Add(1)
 		if c <= 3 {

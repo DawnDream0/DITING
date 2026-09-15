@@ -1,6 +1,8 @@
 package tunnel
 
 import (
+	"container/list"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"sync"
@@ -33,8 +35,17 @@ type cacheEntry struct {
 	createdAt    time.Time
 	expiresAt    time.Time
 	staleUntil   time.Time
-	hitCount     int64
-	lastHitAt    time.Time
+	hitCount     atomic.Int64
+	lastHitAt    atomic.Int64 // unix nano timestamp
+
+	cachedWire atomic.Pointer[cachedWirePack]
+
+	elem *list.Element // pointer in lruList for O(1) eviction
+}
+
+type cachedWirePack struct {
+	sec  uint32
+	wire []byte
 }
 
 // dnsCache provides a thread-safe in-memory cache for DNS responses.
@@ -42,6 +53,7 @@ type dnsCache struct {
 	mu         sync.RWMutex
 	config     dnsCacheConfig
 	entries    map[string]*cacheEntry
+	lruList    *list.List
 	maxEntries int
 
 	flightMu sync.Mutex
@@ -76,6 +88,7 @@ func newDNSCache(cfg dnsCacheConfig) *dnsCache {
 	return &dnsCache{
 		config:     cfg,
 		entries:    make(map[string]*cacheEntry),
+		lruList:    list.New(),
 		maxEntries: defaultMaxCacheEntries,
 		inFlight:   make(map[string]*flightCall),
 	}
@@ -100,6 +113,7 @@ func (c *dnsCache) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries = make(map[string]*cacheEntry)
+	c.lruList.Init()
 }
 
 // cacheKey returns the lookup key for a DNS question.
@@ -155,13 +169,27 @@ func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandida
 			remainingSec = 1
 		}
 
-		c.mu.Lock()
-		entry.hitCount++
-		entry.lastHitAt = now
-		c.mu.Unlock()
-
+		entry.hitCount.Add(1)
+		entry.lastHitAt.Store(now.UnixNano())
 		c.totalHits.Add(1)
+
+		// Fast path: if wire response was already packed for this exact remaining second,
+		// directly copy the pre-packed bytes and patch the 2-byte queryID in-place!
+		if pack := entry.cachedWire.Load(); pack != nil && pack.sec == remainingSec {
+			res := make([]byte, len(pack.wire))
+			copy(res, pack.wire)
+			binary.BigEndian.PutUint16(res[0:2], queryID)
+			return res, true, nil
+		}
+
+		// Cache miss for this second: pack using standard patchDNSResponse
 		patched := patchDNSResponse(entry.msg, queryID, remainingSec)
+		if patched != nil {
+			entry.cachedWire.Store(&cachedWirePack{
+				sec:  remainingSec,
+				wire: patched,
+			})
+		}
 		return patched, true, nil
 	}
 
@@ -173,6 +201,9 @@ func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandida
 	c.mu.Lock()
 	if e, ok := c.entries[key]; ok && e == entry && now.After(e.staleUntil) {
 		delete(c.entries, key)
+		if e.elem != nil {
+			c.lruList.Remove(e.elem)
+		}
 	}
 	c.mu.Unlock()
 
@@ -194,6 +225,18 @@ func (c *dnsCache) buildStaleResponse(rawQuery []byte, entry *cacheEntry) []byte
 
 // put stores a successful upstream DNS response into the cache.
 func (c *dnsCache) put(rawQuery, rawResponse []byte) bool {
+	var respMsg dns.Msg
+	if err := respMsg.Unpack(rawResponse); err != nil {
+		return false
+	}
+	return c.putMsg(rawQuery, rawResponse, &respMsg)
+}
+
+// putMsg stores a successful upstream DNS response into the cache using an already unpacked dns.Msg.
+func (c *dnsCache) putMsg(rawQuery, rawResponse []byte, respMsg *dns.Msg) bool {
+	if respMsg == nil {
+		return false
+	}
 	c.mu.RLock()
 	enabled := c.config.Enabled
 	c.mu.RUnlock()
@@ -206,17 +249,12 @@ func (c *dnsCache) put(rawQuery, rawResponse []byte) bool {
 		return false
 	}
 
-	var respMsg dns.Msg
-	if err := respMsg.Unpack(rawResponse); err != nil {
-		return false
-	}
-
 	// Only cache NOERROR responses with answers
 	if respMsg.Rcode != dns.RcodeSuccess || len(respMsg.Answer) == 0 {
 		return false
 	}
 
-	minTTL, found := extractMinTTL(&respMsg)
+	minTTL, found := extractMinTTL(respMsg)
 	if !found || minTTL == 0 {
 		return false
 	}
@@ -239,8 +277,9 @@ func (c *dnsCache) put(rawQuery, rawResponse []byte) bool {
 		staleUntil = expiresAt.Add(time.Duration(staleSeconds) * time.Second)
 	}
 
+	key := cacheKey(domain, qtype, qclass)
 	entry := &cacheEntry{
-		key:          cacheKey(domain, qtype, qclass),
+		key:          key,
 		domain:       domain,
 		qtype:        qtype,
 		qclass:       qclass,
@@ -250,18 +289,28 @@ func (c *dnsCache) put(rawQuery, rawResponse []byte) bool {
 		createdAt:    now,
 		expiresAt:    expiresAt,
 		staleUntil:   staleUntil,
-		hitCount:     0,
-		lastHitAt:    now,
 	}
+	entry.lastHitAt.Store(now.UnixNano())
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if len(c.entries) >= c.maxEntries {
-		c.evictOldestLocked(now)
+	if old, exists := c.entries[key]; exists {
+		if old.elem != nil {
+			c.lruList.Remove(old.elem)
+		}
+		delete(c.entries, key)
+	} else if len(c.entries) >= c.maxEntries {
+		back := c.lruList.Back()
+		if back != nil {
+			oldest := back.Value.(*cacheEntry)
+			c.lruList.Remove(back)
+			delete(c.entries, oldest.key)
+		}
 	}
 
-	c.entries[entry.key] = entry
+	entry.elem = c.lruList.PushFront(entry)
+	c.entries[key] = entry
 	return true
 }
 
@@ -300,31 +349,6 @@ func (c *dnsCache) calculateEffectiveTTL(upstreamTTL uint32) time.Duration {
 	return time.Duration(ttl) * time.Second
 }
 
-func (c *dnsCache) evictOldestLocked(now time.Time) {
-	// First pass: remove expired entries
-	for k, e := range c.entries {
-		if now.After(e.staleUntil) {
-			delete(c.entries, k)
-			if len(c.entries) < c.maxEntries {
-				return
-			}
-		}
-	}
-
-	// Second pass: remove oldest created entries (FIFO / LRU approximation)
-	var oldestKey string
-	var oldestTime time.Time
-	for k, e := range c.entries {
-		if oldestKey == "" || e.createdAt.Before(oldestTime) {
-			oldestKey = k
-			oldestTime = e.createdAt
-		}
-	}
-	if oldestKey != "" {
-		delete(c.entries, oldestKey)
-	}
-}
-
 // singleFlight resolves a query with deduplication so multiple concurrent identical queries
 // only trigger one upstream resolution.
 func (c *dnsCache) singleFlight(rawQuery []byte, resolveFn func() ([]byte, error)) ([]byte, bool, error) {
@@ -353,13 +377,11 @@ func (c *dnsCache) singleFlight(rawQuery []byte, resolveFn func() ([]byte, error
 			return cachedResp, true, nil
 		}
 		// If not in cache, patch ID on returned flight value
-		var msg dns.Msg
-		if err := msg.Unpack(call.val); err == nil {
-			msg.Id = queryID
-			packed, err := msg.Pack()
-			if err == nil {
-				return packed, true, nil
-			}
+		if len(call.val) >= 2 {
+			res := make([]byte, len(call.val))
+			copy(res, call.val)
+			binary.BigEndian.PutUint16(res[0:2], queryID)
+			return res, true, nil
 		}
 		return call.val, true, nil
 	}

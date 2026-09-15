@@ -348,7 +348,7 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 						_ = w.WriteMsg(&respMsg)
 						e.totalQueries.Add(1)
 						elapsed := time.Since(startTime).Milliseconds()
-						e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), false, r.Question[0].Qtype, elapsed, appName, resolvedAddresses(staleResp), "", "", true)
+						e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), false, r.Question[0].Qtype, elapsed, appName, resolvedAddressesMsg(&respMsg), "", "", true)
 						return
 					}
 				}
@@ -375,7 +375,7 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 		return
 	}
 
-	if isUpstreamBlocked(respRaw) {
+	if isUpstreamBlockedMsg(&respMsg) {
 		e.totalQueries.Add(1)
 		e.blockedQueries.Add(1)
 		elapsed := time.Since(startTime).Milliseconds()
@@ -383,7 +383,7 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 	} else {
 		e.totalQueries.Add(1)
 		elapsed := time.Since(startTime).Milliseconds()
-		e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), false, r.Question[0].Qtype, elapsed, appName, resolvedAddresses(respRaw), "", "", isCached)
+		e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), false, r.Question[0].Qtype, elapsed, appName, resolvedAddressesMsg(&respMsg), "", "", isCached)
 	}
 
 	respMsg.Id = r.Id
