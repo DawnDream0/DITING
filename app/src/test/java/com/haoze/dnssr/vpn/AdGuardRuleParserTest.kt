@@ -153,4 +153,40 @@ class AdGuardRuleParserTest {
         assertEquals(3, categorized.rewriteRules.size) // rewrite.com -> 1.2.3.4, real.com -> 10.0.0.2, masq-ip.com -> 10.0.0.3
         assertEquals(4, categorized.ignoredCount) // 4 ignored lines: !..., #..., [...], example.com##...
     }
+
+    @Test
+    fun parseAllModifier() {
+        val rule = AdGuardRuleParser.parseLine("||example.com^\$all")
+        assertNotNull(rule)
+        assertEquals("example.com", rule!!.pattern)
+
+        val impRule = AdGuardRuleParser.parseLine("||example.com^\$all,important")
+        assertNotNull(impRule)
+        assertEquals("example.com", impRule!!.pattern)
+        assertTrue(impRule.important)
+    }
+
+    @Test
+    fun parseNegativeAppPrefix() {
+        val rule = AdGuardRuleParser.parseLine("||tracker.com^\$~app=com.android.chrome")
+        assertNotNull(rule)
+        assertEquals("tracker.com", rule!!.pattern)
+        assertEquals("com.android.chrome", rule.appScope)
+        assertTrue(rule.appInverted)
+    }
+
+    @Test
+    fun parseBadfilterAndWebOnlyModifiers() {
+        val badfilterLine = AdGuardRuleParser.parseCategorizedLine("||example.com/banner.js\$script,badfilter")
+        assertEquals(1, badfilterLine.ignoredCount)
+        assertEquals(0, badfilterLine.blockRules.size)
+
+        val webOnlyLine = AdGuardRuleParser.parseCategorizedLine("||example.com^\$image,third-party")
+        assertEquals(1, webOnlyLine.ignoredCount)
+        assertEquals(0, webOnlyLine.blockRules.size)
+
+        val removeparamLine = AdGuardRuleParser.parseCategorizedLine("||example.com^\$removeparam=utm_source")
+        assertEquals(1, removeparamLine.ignoredCount)
+        assertEquals(0, webOnlyLine.blockRules.size)
+    }
 }

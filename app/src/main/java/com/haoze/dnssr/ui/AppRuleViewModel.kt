@@ -7,6 +7,7 @@ import com.haoze.dnssr.data.AppDatabase
 import com.haoze.dnssr.data.entity.AllowRuleEntity
 import com.haoze.dnssr.data.entity.BlockRuleEntity
 import com.haoze.dnssr.data.entity.RuleScope
+import com.haoze.dnssr.ui.apprule.AppRuleItem
 import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.vpn.AdGuardRuleParser
 import com.haoze.dnssr.vpn.AllowListManager
@@ -46,11 +47,11 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
     private val _fullBlockEnabled = MutableStateFlow(false)
     val fullBlockEnabled: StateFlow<Boolean> = _fullBlockEnabled.asStateFlow()
 
-    private val _blockRules = MutableStateFlow<List<BlockRuleEntity>>(emptyList())
-    val blockRules: StateFlow<List<BlockRuleEntity>> = _blockRules.asStateFlow()
+    private val _blockRules = MutableStateFlow<List<AppRuleItem>>(emptyList())
+    val blockRules: StateFlow<List<AppRuleItem>> = _blockRules.asStateFlow()
 
-    private val _allowRules = MutableStateFlow<List<AllowRuleEntity>>(emptyList())
-    val allowRules: StateFlow<List<AllowRuleEntity>> = _allowRules.asStateFlow()
+    private val _allowRules = MutableStateFlow<List<AppRuleItem>>(emptyList())
+    val allowRules: StateFlow<List<AppRuleItem>> = _allowRules.asStateFlow()
 
     init {
         loadAllData()
@@ -119,9 +120,60 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
             val allows = allowRuleDao.allByAppScope(packageName)
             val hasFullBlock = blocks.any { it.pattern == "*" && it.enabled && !it.appInverted }
 
+            val blockIds = blocks.map { it.id }
+            val allowIds = allows.map { it.id }
+            val blockSources = if (blockIds.isNotEmpty()) blockRuleDao.sourcesForRuleIds(blockIds) else emptyList()
+            val allowSources = if (allowIds.isNotEmpty()) allowRuleDao.sourcesForRuleIds(allowIds) else emptyList()
+            val subscriptions = db.subscriptionDao().all().associateBy { "sub_${it.id}" }
+
+            val blockSourcesMap = blockSources.groupBy { it.ruleId }
+            val allowSourcesMap = allowSources.groupBy { it.ruleId }
+
+            val blockItems = blocks.map { entity ->
+                val sources = blockSourcesMap[entity.id].orEmpty()
+                val isUser = sources.isEmpty() || sources.any { it.source == "useradd" || !it.source.startsWith("sub_") }
+                val subSources = sources.filter { it.source.startsWith("sub_") }
+                val isSub = subSources.isNotEmpty()
+                val subName = subSources.firstOrNull()?.let { subscriptions[it.source]?.name }
+                AppRuleItem(
+                    id = entity.id,
+                    pattern = entity.pattern,
+                    rawLine = entity.rawLine,
+                    enabled = entity.enabled,
+                    important = entity.important,
+                    isWildcard = entity.isWildcard,
+                    isAllow = false,
+                    appInverted = entity.appInverted,
+                    isUserRule = isUser,
+                    isSubscription = isSub,
+                    subscriptionName = subName
+                )
+            }
+
+            val allowItems = allows.map { entity ->
+                val sources = allowSourcesMap[entity.id].orEmpty()
+                val isUser = sources.isEmpty() || sources.any { it.source == "useradd" || !it.source.startsWith("sub_") }
+                val subSources = sources.filter { it.source.startsWith("sub_") }
+                val isSub = subSources.isNotEmpty()
+                val subName = subSources.firstOrNull()?.let { subscriptions[it.source]?.name }
+                AppRuleItem(
+                    id = entity.id,
+                    pattern = entity.pattern,
+                    rawLine = entity.rawLine,
+                    enabled = entity.enabled,
+                    important = entity.important,
+                    isWildcard = entity.isWildcard,
+                    isAllow = true,
+                    appInverted = entity.appInverted,
+                    isUserRule = isUser,
+                    isSubscription = isSub,
+                    subscriptionName = subName
+                )
+            }
+
             withContext(Dispatchers.Main) {
-                _blockRules.value = blocks
-                _allowRules.value = allows
+                _blockRules.value = blockItems
+                _allowRules.value = allowItems
                 _fullBlockEnabled.value = hasFullBlock
             }
         }
@@ -287,6 +339,16 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
         val app = _selectedApp.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
+            val isSubscriptionOnly = if (isAllow) {
+                val sources = allowRuleDao.sourcesForRuleIds(listOf(id))
+                sources.isNotEmpty() && sources.all { it.source.startsWith("sub_") }
+            } else {
+                val sources = blockRuleDao.sourcesForRuleIds(listOf(id))
+                sources.isNotEmpty() && sources.all { it.source.startsWith("sub_") }
+            }
+            if (isSubscriptionOnly) {
+                return@launch
+            }
             if (isAllow) {
                 val pattern = allowListManager.deleteRule(id)
                 if (pattern != null) {

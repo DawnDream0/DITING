@@ -237,7 +237,8 @@ interface AllowRuleDao {
         "SELECT r.id, r.pattern, r.rawLine, r.addedAt, " +
             "(r.enabled = 1 AND EXISTS (SELECT 1 FROM allow_rule_source s WHERE s.ruleId = r.id AND s.enabled = 1)) AS enabled, " +
             "r.groupName, r.appScope, r.appInverted, r.isWildcard, r.important " +
-            "FROM allow_rule r WHERE r.appScope LIKE '%' || :appScope || '%' " +
+            "FROM allow_rule r WHERE " +
+            "(r.appScope = :appScope OR r.appScope LIKE :appScope || '|%' OR r.appScope LIKE '%|' || :appScope || '|%' OR r.appScope LIKE '%|' || :appScope) " +
             "AND (r.pattern LIKE :query OR r.rawLine LIKE :query) ORDER BY r.addedAt DESC LIMIT :limit OFFSET :offset"
     )
     suspend fun searchPagedByAppScope(
@@ -247,11 +248,15 @@ interface AllowRuleDao {
         offset: Int
     ): List<AllowRuleEntity>
 
-    @Query("SELECT COUNT(*) FROM allow_rule WHERE appScope LIKE '%' || :appScope || '%'")
+    @Query(
+        "SELECT COUNT(*) FROM allow_rule WHERE " +
+            "(appScope = :appScope OR appScope LIKE :appScope || '|%' OR appScope LIKE '%|' || :appScope || '|%' OR appScope LIKE '%|' || :appScope)"
+    )
     suspend fun countByAppScope(appScope: String): Int
 
     @Query(
-        "SELECT COUNT(*) FROM allow_rule WHERE appScope LIKE '%' || :appScope || '%' " +
+        "SELECT COUNT(*) FROM allow_rule WHERE " +
+            "(appScope = :appScope OR appScope LIKE :appScope || '|%' OR appScope LIKE '%|' || :appScope || '|%' OR appScope LIKE '%|' || :appScope) " +
             "AND (pattern LIKE :query OR rawLine LIKE :query)"
     )
     suspend fun searchCountByAppScope(appScope: String, query: String): Int
@@ -260,7 +265,9 @@ interface AllowRuleDao {
         "SELECT r.id, r.pattern, r.rawLine, r.addedAt, " +
             "(r.enabled = 1 AND EXISTS (SELECT 1 FROM allow_rule_source s WHERE s.ruleId = r.id AND s.enabled = 1)) AS enabled, " +
             "r.groupName, r.appScope, r.appInverted, r.isWildcard, r.important " +
-            "FROM allow_rule r WHERE r.appScope LIKE '%' || :appScope || '%' ORDER BY r.addedAt DESC"
+            "FROM allow_rule r WHERE " +
+            "(r.appScope = :appScope OR r.appScope LIKE :appScope || '|%' OR r.appScope LIKE '%|' || :appScope || '|%' OR r.appScope LIKE '%|' || :appScope) " +
+            "ORDER BY r.addedAt DESC"
     )
     suspend fun allByAppScope(appScope: String): List<AllowRuleEntity>
 

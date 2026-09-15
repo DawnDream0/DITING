@@ -187,13 +187,23 @@ internal fun AppSectionHeader(
     }
 }
 
+data class AppRuleItem(
+    val id: Long,
+    val pattern: String,
+    val rawLine: String,
+    val enabled: Boolean,
+    val important: Boolean,
+    val isWildcard: Boolean,
+    val isAllow: Boolean,
+    val appInverted: Boolean,
+    val isUserRule: Boolean,
+    val isSubscription: Boolean,
+    val subscriptionName: String? = null
+)
+
 @Composable
 internal fun RuleEntityRow(
-    pattern: String,
-    rawLine: String,
-    enabled: Boolean,
-    important: Boolean,
-    isWildcard: Boolean,
+    item: AppRuleItem,
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
@@ -214,31 +224,53 @@ internal fun RuleEntityRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = pattern,
+                    text = item.pattern,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (important) {
+                if (item.important) {
                     RuleTagChip(
                         text = localizedText("重要"),
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
-                if (isWildcard) {
+                if (item.isWildcard) {
                     RuleTagChip(
                         text = localizedText("通配符"),
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
+                if (item.appInverted) {
+                    RuleTagChip(
+                        text = localizedText("排除此应用"),
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                if (item.isSubscription) {
+                    RuleTagChip(
+                        text = item.subscriptionName?.let { localizedText(it) } ?: localizedText("规则订阅"),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else if (item.isUserRule) {
+                    RuleTagChip(
+                        text = localizedText("自定义"),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
-            if (rawLine != pattern) {
+            if (item.rawLine != item.pattern) {
                 Text(
-                    text = rawLine,
+                    text = item.rawLine,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -247,16 +279,18 @@ internal fun RuleEntityRow(
             }
         }
         Switch(
-            checked = enabled,
+            checked = item.enabled,
             onCheckedChange = onToggle
         )
-        IconButton(onClick = onDelete) {
-            Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = localizedText("删除"),
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(20.dp)
-            )
+        if (item.isUserRule) {
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = localizedText("删除"),
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }

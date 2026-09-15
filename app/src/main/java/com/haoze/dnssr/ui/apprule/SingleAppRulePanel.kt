@@ -55,8 +55,8 @@ internal fun SingleAppRulePanel(
     app: InstalledApp,
     allowlistDomains: Set<String>,
     fullBlockEnabled: Boolean,
-    blockRules: List<BlockRuleEntity>,
-    allowRules: List<AllowRuleEntity>,
+    blockRules: List<AppRuleItem>,
+    allowRules: List<AppRuleItem>,
     onBack: () -> Unit,
     onAddAllowlistDomain: (String) -> Unit,
     onRemoveAllowlistDomain: (String) -> Unit,
@@ -320,11 +320,7 @@ internal fun SingleAppRulePanel(
                         modifier = Modifier.padding(horizontal = 16.dp)
                     ) {
                         RuleEntityRow(
-                            pattern = rule.pattern,
-                            rawLine = rule.rawLine,
-                            enabled = rule.enabled,
-                            important = rule.important,
-                            isWildcard = rule.isWildcard,
+                            item = rule,
                             onToggle = { onToggleRule(rule.id, true, it) },
                             onDelete = { onDeleteRule(rule.id, true) }
                         )
@@ -368,11 +364,7 @@ internal fun SingleAppRulePanel(
                         modifier = Modifier.padding(horizontal = 16.dp)
                     ) {
                         RuleEntityRow(
-                            pattern = rule.pattern,
-                            rawLine = rule.rawLine,
-                            enabled = rule.enabled,
-                            important = rule.important,
-                            isWildcard = rule.isWildcard,
+                            item = rule,
                             onToggle = { onToggleRule(rule.id, false, it) },
                             onDelete = { onDeleteRule(rule.id, false) }
                         )

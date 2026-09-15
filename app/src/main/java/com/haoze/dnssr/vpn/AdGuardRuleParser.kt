@@ -83,6 +83,30 @@ object AdGuardRuleParser {
     private val SINKHOLE_ADDRESSES = setOf("0", "0.0.0.0", "127.0.0.1", "::", "::1")
     private val DOMAIN_LABEL = Regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
+    private val WEB_ONLY_MODIFIER_PREFIXES = listOf(
+        "domain=", "~domain=", "denyallow=", "~denyallow=", "to=", "~to=",
+        "method=", "~method=", "header=", "~header=", "redirect=", "redirect-rule=",
+        "removeparam=", "removeheader=", "replace=", "urltransform=", "cookie=",
+        "csp=", "permissions=", "jsonprune=", "xmlprune=", "referrerpolicy=", "reason="
+    )
+
+    private val WEB_ONLY_MODIFIER_TOKENS = setOf(
+        "third-party", "~third-party", "strict-third-party", "strict-first-party",
+        "match-case", "network", "document", "~document", "subdocument", "~subdocument",
+        "script", "~script", "stylesheet", "~stylesheet", "image", "~image",
+        "font", "~font", "media", "~media", "object", "~object",
+        "xmlhttprequest", "~xmlhttprequest", "websocket", "~websocket",
+        "ping", "~ping", "other", "~other", "popup", "~popup",
+        "elemhide", "ehide", "generichide", "ghide", "specifichide", "shide",
+        "genericblock", "urlblock", "content", "jsinject", "extension",
+        "hls", "inline-script", "inline-font"
+    )
+
+    private fun isWebOnlyModifier(lower: String): Boolean {
+        if (lower in WEB_ONLY_MODIFIER_TOKENS) return true
+        return WEB_ONLY_MODIFIER_PREFIXES.any { lower.startsWith(it) }
+    }
+
     fun parseLine(line: String): ParsedRule? = parseSingle(line, allowRule = false)
 
     /** Manual allow entry accepts either an exception rule or a plain domain. */
@@ -317,12 +341,13 @@ object AdGuardRuleParser {
                     lower == "important" -> {
                         important = true
                     }
-                    lower.startsWith("app=") -> {
-                        val appValue = token.substring(4).trim()
+                    lower.startsWith("app=") || lower.startsWith("~app=") -> {
+                        val isNegativePrefix = lower.startsWith("~app=")
+                        val appValue = if (isNegativePrefix) token.substring(5).trim() else token.substring(4).trim()
                         if (appValue.isEmpty()) return CategorizedLine(unsupportedCount = 1)
                         val pkgs = appValue.split('|').map { it.trim() }.filter { it.isNotEmpty() }
                         if (pkgs.isEmpty()) return CategorizedLine(unsupportedCount = 1)
-                        val hasInverted = pkgs.any { it.startsWith("~") }
+                        val hasInverted = isNegativePrefix || pkgs.any { it.startsWith("~") }
                         val cleanPkgs = pkgs.map { it.removePrefix("~").trim().lowercase() }.filter { it.isNotEmpty() }
                         if (cleanPkgs.isEmpty()) return CategorizedLine(unsupportedCount = 1)
                         appInverted = hasInverted
@@ -363,6 +388,17 @@ object AdGuardRuleParser {
                                 return CategorizedLine(invalidCount = 1)
                             }
                         }
+                    }
+                    lower == "all" -> {
+                        // $all matches all content types; at DNS level, equivalent to full domain match.
+                    }
+                    lower == "badfilter" -> {
+                        // $badfilter disables existing rules. In DNS filtering, ignore it to avoid blocking.
+                        return CategorizedLine(ignoredCount = 1)
+                    }
+                    isWebOnlyModifier(lower) -> {
+                        // Web/browser-specific modifiers cannot safely trigger whole-domain DNS blocking.
+                        return CategorizedLine(ignoredCount = 1)
                     }
                     else -> {
                         return CategorizedLine(unsupportedCount = 1)
