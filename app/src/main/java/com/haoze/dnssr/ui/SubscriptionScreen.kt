@@ -45,9 +45,20 @@ import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 fun SubscriptionScreen(
     onBack: () -> Unit,
     ruleScope: com.haoze.dnssr.data.entity.RuleScope = com.haoze.dnssr.data.entity.RuleScope.DNS,
+    onNavigateToAddSubscription: (() -> Unit)? = null,
     onRuntimeDnsSettingsChanged: () -> Unit = {},
     viewModel: SubscriptionViewModel = viewModel()
 ) {
+    var showInlineAddScreen by remember { mutableStateOf(false) }
+    if (showInlineAddScreen) {
+        AddSubscriptionScreen(
+            onBack = { showInlineAddScreen = false },
+            ruleScope = ruleScope,
+            onRuntimeDnsSettingsChanged = onRuntimeDnsSettingsChanged
+        )
+        return
+    }
+
     val context = LocalContext.current
     val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
     val pendingSubscriptions by viewModel.pendingSubscriptions.collectAsStateWithLifecycle()
@@ -66,9 +77,15 @@ fun SubscriptionScreen(
         subscriptions.none { it.url == pending.url }
     } + subscriptions
 
+    fun openAddSubscription() {
+        if (onNavigateToAddSubscription != null) {
+            onNavigateToAddSubscription()
+        } else {
+            showInlineAddScreen = true
+        }
+    }
+
     var showAddChoiceDialog by remember { mutableStateOf(false) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var pendingKind by remember { mutableStateOf(SubscriptionKind.DOMAIN) }
     var showDnsImportDialog by remember { mutableStateOf(false) }
     var showActionDialog by remember { mutableStateOf<SubscriptionEntity?>(null) }
     var showDeleteDialog by remember { mutableStateOf<SubscriptionEntity?>(null) }
@@ -115,8 +132,7 @@ fun SubscriptionScreen(
                 if (ruleScope == com.haoze.dnssr.data.entity.RuleScope.HTTPS) {
                     showAddChoiceDialog = true
                 } else {
-                    pendingKind = SubscriptionKind.DOMAIN
-                    showAddDialog = true
+                    openAddSubscription()
                 }
             }, enabled = !busy) {
                 Icon(Icons.Default.Add, contentDescription = localizedText("添加规则订阅"))
@@ -226,9 +242,8 @@ fun SubscriptionScreen(
         AddSubscriptionChoiceDialog(
             onDismiss = { showAddChoiceDialog = false },
             onAddRemote = {
-                pendingKind = SubscriptionKind.DOMAIN
                 showAddChoiceDialog = false
-                showAddDialog = true
+                openAddSubscription()
             },
             onImportFromDns = if (ruleScope == com.haoze.dnssr.data.entity.RuleScope.HTTPS) {
                 {
@@ -236,19 +251,6 @@ fun SubscriptionScreen(
                     showDnsImportDialog = true
                 }
             } else null
-        )
-    }
-
-    if (showAddDialog) {
-        AddSubscriptionDialog(
-            onDismiss = { showAddDialog = false },
-            mirrorTemplates = mirrorTemplates,
-            groups = subscriptionGroups,
-            initialKind = pendingKind,
-            onConfirm = { url, name, kind, mirrorTemplate, mirrorFallback, groupId, newGroupName ->
-                viewModel.addSubscription(url, name, kind, mirrorTemplate, mirrorFallback, groupId, newGroupName)
-                showAddDialog = false
-            }
         )
     }
 

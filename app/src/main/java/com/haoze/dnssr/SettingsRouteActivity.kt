@@ -157,10 +157,14 @@ class SettingsRouteActivity : AppLocalizedActivity() {
         super.onStop()
     }
 
-    private fun openRoute(nextRoute: String, requestSource: RequestSource? = null) {
+    private fun openRoute(
+        nextRoute: String,
+        requestSource: RequestSource? = null,
+        ruleScope: RuleScope? = requestedRuleScope
+    ) {
         if (childLaunchInProgress || (nextRoute == route && requestSource == requestedRequestSource)) return
         childLaunchInProgress = true
-        childActivityLauncher.launch(createIntent(this, nextRoute, requestSource = requestSource))
+        childActivityLauncher.launch(createIntent(this, nextRoute, ruleScope = ruleScope, requestSource = requestSource))
     }
 
     private fun finishSettings() {
@@ -310,8 +314,18 @@ class SettingsRouteActivity : AppLocalizedActivity() {
                 initialSource = requestedRequestSource ?: if (route == Routes.HTTP_REQUEST_LOGS) RequestSource.HTTPS else RequestSource.ALL,
                 onRuntimeDnsSettingsChanged = onRuntimeDnsSettingsChanged
             )
-            Routes.SUBSCRIPTION_MANAGEMENT -> SubscriptionScreen(onBack, onRuntimeDnsSettingsChanged = onRuntimeDnsSettingsChanged)
+            Routes.SUBSCRIPTION_MANAGEMENT -> SubscriptionScreen(
+                onBack = onBack,
+                ruleScope = ruleScope ?: RuleScope.DNS,
+                onNavigateToAddSubscription = { onNavigate(Routes.ADD_SUBSCRIPTION) },
+                onRuntimeDnsSettingsChanged = onRuntimeDnsSettingsChanged
+            )
             Routes.SUBSCRIPTION_AUTO_UPDATE_INTERVAL -> SubscriptionAutoUpdateIntervalScreen(onBack)
+            Routes.ADD_SUBSCRIPTION -> AddSubscriptionScreen(
+                onBack = onBack,
+                ruleScope = ruleScope ?: RuleScope.DNS,
+                onRuntimeDnsSettingsChanged = onRuntimeDnsSettingsChanged
+            )
             Routes.ABOUT -> AboutScreen(onBack, "应用信息")
             Routes.APP_UPDATE -> AppUpdateScreen(appUpdateState, onBack, onCheckForAppUpdate, onDownloadAppUpdate, onJoinQqGroup, startupUpdateCheckDisabled, onStartupUpdateCheckDisabledChange)
             Routes.APPEARANCE_SETTINGS -> SettingsGuideHost(SettingsGuides.APPEARANCE) { AppearanceSettingsScreen(onBack, "外观设置", { onNavigate(Routes.DAY_NIGHT_MODE) }, { onNavigate(Routes.THEME_COLOR_SETTINGS) }, { onNavigate(Routes.HOME_COMPONENT_OPACITY) }, { onNavigate(Routes.HOME_SENTENCE_SETTINGS) }, { onNavigate(Routes.NOTIFICATION_SETTINGS) }, { onNavigate(Routes.CUSTOM_BACKGROUND_SETTINGS) }) }

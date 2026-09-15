@@ -66,6 +66,7 @@ object Routes {
     const val HTTP_REQUEST_LOGS = "http_request_logs"
     const val SUBSCRIPTION_MANAGEMENT = "subscription_management"
     const val SUBSCRIPTION_AUTO_UPDATE_INTERVAL = "subscription_auto_update_interval"
+    const val ADD_SUBSCRIPTION = "add_subscription"
     const val ABOUT = "about"
     const val APP_UPDATE = "app_update"
     const val SPONSOR = "sponsor"

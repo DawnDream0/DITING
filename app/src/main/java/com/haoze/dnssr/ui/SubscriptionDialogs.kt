@@ -141,6 +141,7 @@ internal fun AddSubscriptionChoiceDialog(
     )
 }
 
+@Deprecated("Use AddSubscriptionScreen instead")
 @Composable
 internal fun AddSubscriptionDialog(
     onDismiss: () -> Unit,
