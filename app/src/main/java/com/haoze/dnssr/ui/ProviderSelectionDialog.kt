@@ -1,6 +1,8 @@
 package com.haoze.dnssr.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -20,6 +22,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -108,8 +112,10 @@ internal fun ModeProviderSelectionDialog(
     onProviderToggled: (DnsProvider) -> Unit,
     onActionSelected: (DnsProvider) -> Unit
 ) {
-    val selectableProviders = providers.filter {
-        it.id != MANAGE_PROVIDER_ID && it.id != PROVIDER_VISIBILITY_ID
+    val selectableProviders = remember(providers) {
+        providers.filter {
+            it.id != MANAGE_PROVIDER_ID && it.id != PROVIDER_VISIBILITY_ID
+        }
     }
     val selectedNames = selectableProviders
         .filter { it.id in selectedIds }
@@ -148,19 +154,16 @@ private fun ProviderDialog(
             onDismissRequest = onDismissRequest,
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            DisableDialogDimming()
+            ConfigureDialogWindow()
             AnimatedVisibility(
                 visibleState = dialogVisibility,
-                enter = fadeIn(animationSpec = tween(120)) +
+                enter = fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
                     scaleIn(
-                        initialScale = 0.88f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
+                        initialScale = 0.92f,
+                        animationSpec = tween(220, easing = FastOutSlowInEasing)
                     ),
-                exit = fadeOut(animationSpec = tween(90)) +
-                    scaleOut(targetScale = 0.92f, animationSpec = tween(120))
+                exit = fadeOut(animationSpec = tween(150, easing = FastOutLinearInEasing)) +
+                    scaleOut(targetScale = 0.94f, animationSpec = tween(150, easing = FastOutLinearInEasing))
             ) {
                 val maxDialogHeight = LocalConfiguration.current.screenHeightDp.dp * 0.68f
                 Surface(
@@ -171,14 +174,19 @@ private fun ProviderDialog(
                     shape = ProviderDialogCornerShape,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     tonalElevation = 3.dp,
-                    shadowElevation = 6.dp
+                    shadowElevation = 3.dp
                 ) {
-                    val regularProviders = providers.filter {
-                        it.id != MANAGE_PROVIDER_ID && it.id != PROVIDER_VISIBILITY_ID
+                    val regularProviders = remember(providers) {
+                        providers.filter {
+                            it.id != MANAGE_PROVIDER_ID && it.id != PROVIDER_VISIBILITY_ID
+                        }
                     }
-                    val manageProvider = providers.firstOrNull { it.id == MANAGE_PROVIDER_ID }
-                    val visibilityProvider =
+                    val manageProvider = remember(providers) {
+                        providers.firstOrNull { it.id == MANAGE_PROVIDER_ID }
+                    }
+                    val visibilityProvider = remember(providers) {
                         providers.firstOrNull { it.id == PROVIDER_VISIBILITY_ID }
+                    }
 
                     Column(modifier = Modifier.fillMaxWidth()) {
                         ProviderDialogTitleRow(
@@ -187,20 +195,23 @@ private fun ProviderDialog(
                             subtitle = subtitle,
                             onDismissRequest = onDismissRequest
                         )
-                        Column(
+                        LazyColumn(
                             modifier = Modifier
                                 .weight(1f, fill = false)
-                                .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            regularProviders.forEachIndexed { index, provider ->
+                            itemsIndexed(
+                                items = regularProviders,
+                                key = { _, provider -> provider.id }
+                            ) { index, provider ->
+                                val isSelected = isProviderSelected(provider)
                                 ProviderOptionRow(
                                     provider = provider,
-                                    isSelected = isProviderSelected(provider),
+                                    isSelected = isSelected,
                                     rowShape = providerRowShape(
                                         regularProviders = regularProviders,
                                         index = index,
-                                        isSelected = isProviderSelected(provider),
+                                        isSelected = isSelected,
                                         isProviderSelected = isProviderSelected
                                     ),
                                     onClick = { onProviderClick(provider) }
@@ -433,10 +444,14 @@ private fun DialogActionRow(
 }
 
 @Composable
-private fun DisableDialogDimming() {
+private fun ConfigureDialogWindow() {
     val view = LocalView.current
     SideEffect {
-        (view.parent as? DialogWindowProvider)?.window?.setDimAmount(0f)
+        val window = (view.parent as? DialogWindowProvider)?.window
+        window?.let {
+            it.setDimAmount(0f)
+            it.setWindowAnimations(0)
+        }
     }
 }
 

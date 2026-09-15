@@ -95,7 +95,9 @@ internal fun MainContent(
         }
     }
 
-    val raceProviders = providers.filter { it.id in raceProviderIds }
+    val raceProviders = remember(providers, raceProviderIds) {
+        providers.filter { it.id in raceProviderIds }
+    }
 
     Column(
         modifier = modifier
@@ -142,24 +144,32 @@ internal fun MainContent(
             Spacer(modifier = Modifier.padding(vertical = 12.dp))
         }
 
-        val filteredProviders = providers.filter(homeProviderVisibility::isVisible)
+        val filteredProviders = remember(providers, homeProviderVisibility) {
+            providers.filter(homeProviderVisibility::isVisible)
+        }
         val manageProviderName = localizedText("管理服务...")
         val providerVisibilityName = localizedText("服务显示...")
-        val manageProviderEntry =
+        val manageProviderEntry = remember(manageProviderName) {
             DnsProvider(id = MANAGE_PROVIDER_ID, name = manageProviderName, isPreset = true)
-        val providerVisibilityEntry =
-            DnsProvider(id = PROVIDER_VISIBILITY_ID, name = providerVisibilityName, isPreset = true)
-        val displayProviders = buildList {
-            selectedProvider?.takeIf { selected -> filteredProviders.none { it.id == selected.id } }?.let(::add)
-            addAll(filteredProviders)
-            add(manageProviderEntry)
-            add(providerVisibilityEntry)
         }
-        val modeDisplayProviders = buildList {
-            raceProviders.filter { race -> filteredProviders.none { it.id == race.id } }.let(::addAll)
-            addAll(filteredProviders)
-            add(manageProviderEntry)
-            add(providerVisibilityEntry)
+        val providerVisibilityEntry = remember(providerVisibilityName) {
+            DnsProvider(id = PROVIDER_VISIBILITY_ID, name = providerVisibilityName, isPreset = true)
+        }
+        val displayProviders = remember(filteredProviders, selectedProvider, manageProviderEntry, providerVisibilityEntry) {
+            buildList {
+                selectedProvider?.takeIf { selected -> filteredProviders.none { it.id == selected.id } }?.let(::add)
+                addAll(filteredProviders)
+                add(manageProviderEntry)
+                add(providerVisibilityEntry)
+            }
+        }
+        val modeDisplayProviders = remember(filteredProviders, raceProviders, manageProviderEntry, providerVisibilityEntry) {
+            buildList {
+                raceProviders.filter { race -> filteredProviders.none { it.id == race.id } }.let(::addAll)
+                addAll(filteredProviders)
+                add(manageProviderEntry)
+                add(providerVisibilityEntry)
+            }
         }
         val selectedIndex = displayProviders.indexOfFirst { it.id == selectedProvider?.id }
             .coerceAtLeast(0)
