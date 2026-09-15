@@ -39,8 +39,12 @@ internal class CategorizedRuleStreamImporter(
         onEmpty: (typeMismatchOnly: Boolean) -> Nothing,
         onProgress: (suspend (processed: Int) -> Unit)? = null
     ): RuleImportSummary {
-        val acceptsDomain = SubscriptionKind.isDomain(kind)
-        val acceptsHosts = SubscriptionKind.isHosts(kind)
+        // Accept all categorized rules across all subscription kinds:
+        // - Adblock domain lists can include $dnsrewrite= rules.
+        // - Hosts files predominantly contain 0.0.0.0 / 127.0.0.1 sinkholes (parsed into blockRules).
+        // This ensures zero valid rules are discarded due to arbitrary type boundaries.
+        val acceptsDomain = true
+        val acceptsHosts = true
 
         val blockBatch = ArrayList<AdGuardRuleParser.ParsedRule>(chunkSize)
         val allowBatch = ArrayList<AdGuardRuleParser.ParsedRule>(chunkSize)
@@ -87,29 +91,19 @@ internal class CategorizedRuleStreamImporter(
                 invalid += parsed.invalidCount
                 unsupported += parsed.unsupportedCount
 
-                val domainRuleCount = parsed.blockRules.size + parsed.allowRules.size
-                if (acceptsDomain) {
-                    parsedRules += domainRuleCount
-                    for (rule in parsed.blockRules) {
-                        blockBatch += rule
-                        if (blockBatch.size == chunkSize) flushBlock()
-                    }
-                    for (rule in parsed.allowRules) {
-                        allowBatch += rule
-                        if (allowBatch.size == chunkSize) flushAllow()
-                    }
-                } else {
-                    typeSkipped += domainRuleCount
+                val lineRuleCount = parsed.blockRules.size + parsed.allowRules.size + parsed.rewriteRules.size
+                parsedRules += lineRuleCount
+                for (rule in parsed.blockRules) {
+                    blockBatch += rule
+                    if (blockBatch.size == chunkSize) flushBlock()
                 }
-
-                if (acceptsHosts) {
-                    parsedRules += parsed.rewriteRules.size
-                    for (rule in parsed.rewriteRules) {
-                        rewriteBatch += rule
-                        if (rewriteBatch.size == chunkSize) flushRewrite()
-                    }
-                } else {
-                    typeSkipped += parsed.rewriteRules.size
+                for (rule in parsed.allowRules) {
+                    allowBatch += rule
+                    if (allowBatch.size == chunkSize) flushAllow()
+                }
+                for (rule in parsed.rewriteRules) {
+                    rewriteBatch += rule
+                    if (rewriteBatch.size == chunkSize) flushRewrite()
                 }
             }
         }

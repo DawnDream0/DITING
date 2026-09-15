@@ -17,31 +17,32 @@ object DefaultWhitelistSeeder {
     const val SOURCE_PRESET = "preset"
     const val SOURCE_USER = "useradd"
 
+    private const val PRESET_SCHEMA_VERSION = 2L
+
     /**
      * Ensures the preset default whitelist is initialized in the database.
      *
-     * Gated by the app version: each version seeds/resets the preset
-     * whitelist only once, on the first launch after that version is
-     * installed. Later launches within the same version do not re-seed, so
-     * the user's subsequent customizations are never overwritten. The reset
-     * only deletes rows with source=preset; user-created rules (useradd and
-     * similar sources) are untouched.
+     * Gated by the app version and preset schema revision: seeds/resets the preset
+     * whitelist only once when upgraded or when schema changes. Later launches
+     * within the same version do not re-seed, so user customizations are preserved.
+     * The reset only deletes rows with source=preset; user-created rules are untouched.
      */
     suspend fun ensureInitialized(context: Context, database: AppDatabase) = withContext(Dispatchers.IO) {
         val currentVersion = currentVersionCode(context)
+        val targetSeedVersion = currentVersion * 1000L + PRESET_SCHEMA_VERSION
         if (AppRulesSettingsStore.isDefaultWhitelistInitialized(context) &&
-            AppRulesSettingsStore.getDefaultWhitelistSeededVersion(context) == currentVersion
+            AppRulesSettingsStore.getDefaultWhitelistSeededVersion(context) == targetSeedVersion
         ) {
             return@withContext
         }
         if (AppRulesSettingsStore.isDefaultWhitelistInitialized(context)) {
-            Log.i(TAG, "App version changed to $currentVersion, resetting preset whitelist once...")
+            Log.i(TAG, "App version or preset schema changed (target: $targetSeedVersion), resetting preset whitelist...")
         } else {
             Log.i(TAG, "Initializing default preset whitelist...")
         }
         seed(context, database, forceReset = true)
         AppRulesSettingsStore.setDefaultWhitelistInitialized(context, true)
-        AppRulesSettingsStore.setDefaultWhitelistSeededVersion(context, currentVersion)
+        AppRulesSettingsStore.setDefaultWhitelistSeededVersion(context, targetSeedVersion)
         // The upgrade reset can happen while the VPN is running: keep the
         // service-side allowlist cache and Go-side passthrough snapshot in sync.
         RuntimeDnsSettingsRefresher.refreshRuleIndexesIfRunning(

@@ -20,6 +20,10 @@ object AdGuardRuleParser {
 
     data class WildcardPattern(val pattern: String) {
         val isAll: Boolean = pattern == "*"
+        val baseDomain: String? = if (pattern.startsWith("*.") && pattern.length > 2) {
+            pattern.substring(2).lowercase().trimEnd('.')
+        } else null
+
         private val requiredLiterals: Array<String> = if (isAll) emptyArray() else {
             pattern.lowercase().split('*').filter { it.isNotEmpty() }.toTypedArray()
         }
@@ -41,6 +45,7 @@ object AdGuardRuleParser {
         fun matches(domainInput: String): Boolean {
             if (isAll) return true
             val domain = domainInput.trimEnd('.').lowercase()
+            if (baseDomain != null && domain == baseDomain) return true
             for (literal in requiredLiterals) {
                 if (!domain.contains(literal)) return false
             }
@@ -102,9 +107,15 @@ object AdGuardRuleParser {
         "hls", "inline-script", "inline-font"
     )
 
-    private fun isWebOnlyModifier(lower: String): Boolean {
-        if (lower in WEB_ONLY_MODIFIER_TOKENS) return true
+    private fun isWebContextModifierPrefix(lower: String): Boolean {
         return WEB_ONLY_MODIFIER_PREFIXES.any { lower.startsWith(it) }
+    }
+
+    private fun isStrippableModifier(lower: String): Boolean {
+        if (lower in WEB_ONLY_MODIFIER_TOKENS) return true
+        if (lower in setOf("all", "empty", "mp4", "webrtc")) return true
+        // Non-prefix single-token modifiers without '=' in Adblock/ABP lists can be stripped safely
+        return !lower.contains('=')
     }
 
     fun parseLine(line: String): ParsedRule? = parseSingle(line, allowRule = false)
@@ -389,16 +400,17 @@ object AdGuardRuleParser {
                             }
                         }
                     }
-                    lower == "all" -> {
-                        // $all matches all content types; at DNS level, equivalent to full domain match.
-                    }
                     lower == "badfilter" -> {
                         // $badfilter disables existing rules. In DNS filtering, ignore it to avoid blocking.
                         return CategorizedLine(ignoredCount = 1)
                     }
-                    isWebOnlyModifier(lower) -> {
-                        // Web/browser-specific modifiers cannot safely trigger whole-domain DNS blocking.
+                    isWebContextModifierPrefix(lower) -> {
+                        // Web/browser-specific contextual modifiers (domain=, header=, replace=) cannot safely trigger whole-domain DNS blocking.
                         return CategorizedLine(ignoredCount = 1)
+                    }
+                    isStrippableModifier(lower) -> {
+                        // Browser-specific tokens ($third-party, $popup, $script, $image, $all, etc.)
+                        // are stripped for DNS filtering so pure-domain blocking is preserved.
                     }
                     else -> {
                         return CategorizedLine(unsupportedCount = 1)

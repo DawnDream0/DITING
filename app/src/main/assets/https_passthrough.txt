@@ -26,8 +26,8 @@
 # a brief reason in the block above.
 
 # ─── Google / Android 平台核心 ────────────────────────────────────────
-android.com
-google.com
-googleapis.com
-googleusercontent.com
-gstatic.com
+mtalk.google.com
+android.clients.google.com
+play.googleapis.com
+connectivitycheck.gstatic.com
+connectivitycheck.android.com

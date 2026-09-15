@@ -64,12 +64,9 @@ internal class SubscriptionRuleStorage(
         val source = sourceTag(subscriptionId)
         val stagingSource = stagingSourceTag(subscriptionId)
         database.withTransaction {
-            if (SubscriptionKind.isHosts(kind)) {
-                rewriteRuleManager.promoteRulesBySource(stagingSource, source, refreshCache = false)
-            } else {
-                blockListManager.promoteRulesBySource(stagingSource, source, refreshCache = false)
-                allowListManager.promoteRulesBySource(stagingSource, source, refreshCache = false)
-            }
+            blockListManager.promoteRulesBySource(stagingSource, source, refreshCache = false)
+            allowListManager.promoteRulesBySource(stagingSource, source, refreshCache = false)
+            rewriteRuleManager.promoteRulesBySource(stagingSource, source, refreshCache = false)
             subscriptionDao.update(completedSubscription)
         }
         refreshAllCaches()
@@ -94,11 +91,8 @@ internal class SubscriptionRuleStorage(
 
     suspend fun setSubscriptionRulesEnabled(subscriptionId: Long, kind: String, enabled: Boolean) {
         val source = sourceTag(subscriptionId)
-        if (SubscriptionKind.isHosts(kind)) {
-            rewriteRuleManager.setRulesEnabledBySource(source, enabled)
-        } else {
-            blockListManager.setRulesEnabledBySource(source, enabled)
-            allowListManager.setRulesEnabledBySource(source, enabled)
-        }
+        blockListManager.setRulesEnabledBySource(source, enabled)
+        allowListManager.setRulesEnabledBySource(source, enabled)
+        rewriteRuleManager.setRulesEnabledBySource(source, enabled)
     }
 }

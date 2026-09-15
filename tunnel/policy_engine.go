@@ -286,15 +286,20 @@ func (r *dtriReader) containsOrParentWithDisabled(domain string, disabled map[st
 
 // wildcardMatcher evaluates glob wildcard rules.
 type wildcardMatcher struct {
-	pattern string
-	isAll   bool
-	regex   *regexp.Regexp
+	pattern    string
+	baseDomain string
+	isAll      bool
+	regex      *regexp.Regexp
 }
 
 // newWildcardMatcher compiles a wildcard string.
 func newWildcardMatcher(pattern string) *wildcardMatcher {
 	if pattern == "*" {
 		return &wildcardMatcher{pattern: pattern, isAll: true}
+	}
+	var baseDomain string
+	if strings.HasPrefix(pattern, "*.") && len(pattern) > 2 {
+		baseDomain = strings.TrimSuffix(strings.ToLower(pattern[2:]), ".")
 	}
 	var sb strings.Builder
 	sb.WriteString("^")
@@ -310,7 +315,7 @@ func newWildcardMatcher(pattern string) *wildcardMatcher {
 	if err != nil {
 		return nil
 	}
-	return &wildcardMatcher{pattern: pattern, isAll: false, regex: re}
+	return &wildcardMatcher{pattern: pattern, baseDomain: baseDomain, isAll: false, regex: re}
 }
 
 // matches checks whether domain or any parent domain matches the wildcard.
@@ -319,6 +324,9 @@ func (w *wildcardMatcher) matches(domain string) bool {
 		return false
 	}
 	if w.isAll {
+		return true
+	}
+	if w.baseDomain != "" && domain == w.baseDomain {
 		return true
 	}
 	if w.regex == nil {
@@ -334,6 +342,9 @@ func (w *wildcardMatcher) matches(domain string) bool {
 			break
 		}
 		d = d[dot+1:]
+		if w.baseDomain != "" && d == w.baseDomain {
+			return true
+		}
 		if w.regex.MatchString(d) {
 			return true
 		}
