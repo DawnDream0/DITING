@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class OptionalFeature(
     val key: String,
-    @StringRes val titleRes: Int,
+    @get:StringRes val titleRes: Int,
     val description: String,
     val icon: ImageVector
 ) {
