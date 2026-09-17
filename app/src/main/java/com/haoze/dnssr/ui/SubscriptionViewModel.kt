@@ -446,6 +446,18 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
         val context = getApplication<Application>()
         RuntimeDnsSettingsRefresher.refreshRuleIndexesIfRunning(context, refreshBlock = true, refreshAllow = true, refreshRewrite = true, scope = scope)
         RuntimeDnsSettingsRefresher.syncHttpsRequestRulesIfRunning(context)
+        if (!com.haoze.dnssr.vpn.DnsVpnService.isRunning(context)) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val database = AppDatabase.getInstance(context)
+                val ruleIndexDirectory = com.haoze.dnssr.vpn.RuleIndexLayout.scopeDirectory(context.filesDir, scope)
+                val blockManager = BlockListManager(database.blockRuleDao(), ruleIndexDirectory, scope, reloadCacheAfterChanges = false)
+                val allowManager = AllowListManager(database.allowRuleDao(), ruleIndexDirectory, scope, reloadCacheAfterChanges = false)
+                val rewriteManager = com.haoze.dnssr.vpn.RewriteRuleManager(database.rewriteRuleDao(), ruleIndexDirectory, scope, reloadCacheAfterChanges = false)
+                runCatching { blockManager.refreshCache(forceRebuild = true) }
+                runCatching { allowManager.refreshCache(forceRebuild = true) }
+                runCatching { rewriteManager.refreshCache(rebuildSubscriptionIndex = true) }
+            }
+        }
     }
 
     private fun enqueueAndObserve(workId: java.util.UUID, pendingSubscriptionId: Long? = null) {

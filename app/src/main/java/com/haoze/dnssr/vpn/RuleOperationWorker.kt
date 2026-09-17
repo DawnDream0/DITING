@@ -201,6 +201,9 @@ class RuleOperationWorker(
                 RuleOperationType.IMPORT_RULES,
                 RuleOperationType.IMPORT_HOSTS_RULES -> {
                     if (result.hasChanges) {
+                        runCatching { blockManager.refreshCache(forceRebuild = true) }
+                        runCatching { allowManager.refreshCache(forceRebuild = true) }
+                        runCatching { rewriteManager.refreshCache(rebuildSubscriptionIndex = true) }
                         RuntimeDnsSettingsRefresher.refreshRuleIndexesIfRunning(
                             applicationContext,
                             refreshBlock = true,

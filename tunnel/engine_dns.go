@@ -352,12 +352,12 @@ func isUpstreamBlockedMsg(msg *dns.Msg) bool {
 		switch r := rr.(type) {
 		case *dns.A:
 			ipRecordCount++
-			if r.A.Equal(net.IPv4zero) {
+			if r.A.Equal(net.IPv4zero) || r.A.IsLoopback() {
 				nullCount++
 			}
 		case *dns.AAAA:
 			ipRecordCount++
-			if r.AAAA.Equal(net.IPv6zero) {
+			if r.AAAA.Equal(net.IPv6zero) || r.AAAA.IsLoopback() {
 				nullCount++
 			}
 		}

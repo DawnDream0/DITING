@@ -163,10 +163,10 @@ interface BlockRuleDao {
     ): List<EnabledRuleKeyset>
 
     @Query(
-        "SELECT r.pattern, 'useradd' AS source, r.important AS important, " +
+        "SELECT r.pattern, MIN(s.source) AS source, r.important AS important, " +
             "r.appScope AS appScope, r.appInverted AS appInverted, r.isWildcard AS isWildcard FROM block_rule r " +
             "JOIN block_rule_source s ON s.ruleId = r.id " +
-            "WHERE r.enabled = 1 AND s.enabled = 1 AND s.source = 'useradd' " +
+            "WHERE r.enabled = 1 AND s.enabled = 1 AND s.source NOT LIKE 'sub_%' " +
             "GROUP BY r.id, r.pattern, r.important, r.appScope, r.appInverted, r.isWildcard"
     )
     suspend fun enabledCustomRules(): List<EnabledRule>

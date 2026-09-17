@@ -74,11 +74,14 @@ class DnsLogRepository(
         var cached = 0
         rows.forEach { row ->
             when (row.result) {
-                LogResult.PASSED.value, LogResult.REWRITTEN.value -> {
+                LogResult.PASSED.value -> {
                     passed += row.count
                     if (row.cached) cached += row.count
                 }
-                LogResult.BLOCKED.value -> blocked += row.count
+                LogResult.BLOCKED.value, LogResult.REWRITTEN.value -> {
+                    blocked += row.count
+                    if (row.cached) cached += row.count
+                }
                 LogResult.ERROR.value -> error += row.count
             }
         }
