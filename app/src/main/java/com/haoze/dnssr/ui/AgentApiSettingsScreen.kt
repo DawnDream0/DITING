@@ -1,6 +1,5 @@
 package com.haoze.dnssr.ui
 
-import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +18,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.haoze.dnssr.ui.agent.AgentAnalysisSheet
 import com.haoze.dnssr.ui.agent.AnalysisTarget
 import com.haoze.dnssr.ui.components.AppAlertDialog
@@ -52,42 +55,40 @@ enum class AgentApiSubPage {
 fun AgentApiSettingsScreen(
     onBack: () -> Unit,
     title: String = "智能体 API",
+    onNavigate: (String) -> Unit = {},
     initialSubPage: AgentApiSubPage? = null
 ) {
-    var activeSubPage by remember { mutableStateOf(initialSubPage) }
-
-    // Intercept system Back button to return to the hub screen instead of exiting the activity
-    BackHandler(enabled = activeSubPage != null) {
-        activeSubPage = null
-    }
-
-    // When inside a secondary page, render it directly with dedicated back navigation
-    when (activeSubPage) {
-        AgentApiSubPage.CREDENTIALS -> {
-            AgentApiCredentialsScreen(onBack = { activeSubPage = null })
-            return
-        }
-        AgentApiSubPage.PRESETS -> {
-            AgentApiPresetsScreen(onBack = { activeSubPage = null })
-            return
-        }
-        AgentApiSubPage.PARAMS -> {
-            AgentApiParamsScreen(onBack = { activeSubPage = null })
-            return
-        }
-        null -> Unit
-    }
-
     val context = LocalContext.current
-    var config by remember { mutableStateOf(AgentApiSettingsStore.getAgentApiConfig(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Re-read latest configuration when returning from secondary sub-pages
-    LaunchedEffect(activeSubPage) {
-        if (activeSubPage == null) {
-            config = AgentApiSettingsStore.getAgentApiConfig(context)
+    var config by remember { mutableStateOf(AgentApiSettingsStore.getAgentApiConfig(context)) }
+    var presets by remember { mutableStateOf(AgentApiPresetStore.getOrderedPresets(context)) }
+
+    fun refreshState() {
+        config = AgentApiSettingsStore.getAgentApiConfig(context)
+        presets = AgentApiPresetStore.getOrderedPresets(context)
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
-    val presets = remember(config) { AgentApiPresetStore.getOrderedPresets(context) }
+
+    LaunchedEffect(initialSubPage) {
+        when (initialSubPage) {
+            AgentApiSubPage.CREDENTIALS -> onNavigate(Routes.AGENT_API_CREDENTIALS)
+            AgentApiSubPage.PRESETS -> onNavigate(Routes.AGENT_API_PRESETS)
+            AgentApiSubPage.PARAMS -> onNavigate(Routes.AGENT_API_PARAMS)
+            null -> Unit
+        }
+    }
 
     var showResetDialog by remember { mutableStateOf(false) }
     var activeAnalysisTarget by remember { mutableStateOf<AnalysisTarget?>(null) }
@@ -95,6 +96,7 @@ fun AgentApiSettingsScreen(
     fun updateConfig(newConfig: AgentApiConfig) {
         config = newConfig
         AgentApiSettingsStore.setAgentApiConfig(context, newConfig)
+        presets = AgentApiPresetStore.getOrderedPresets(context)
     }
 
     val activePreset = presets.firstOrNull {
@@ -125,9 +127,9 @@ fun AgentApiSettingsScreen(
             item { SettingsGroupTitle(localizedText("配置分类导航")) }
             item {
                 AgentApiNavigationGroup(
-                    onNavigateToCredentials = { activeSubPage = AgentApiSubPage.CREDENTIALS },
-                    onNavigateToPresets = { activeSubPage = AgentApiSubPage.PRESETS },
-                    onNavigateToParams = { activeSubPage = AgentApiSubPage.PARAMS }
+                    onNavigateToCredentials = { onNavigate(Routes.AGENT_API_CREDENTIALS) },
+                    onNavigateToPresets = { onNavigate(Routes.AGENT_API_PRESETS) },
+                    onNavigateToParams = { onNavigate(Routes.AGENT_API_PARAMS) }
                 )
             }
 
@@ -203,7 +205,7 @@ fun AgentApiSettingsScreen(
         target = activeAnalysisTarget,
         onDismiss = { activeAnalysisTarget = null },
         onNavigateToSettings = {
-            activeSubPage = AgentApiSubPage.CREDENTIALS
+            onNavigate(Routes.AGENT_API_CREDENTIALS)
         }
     )
 }

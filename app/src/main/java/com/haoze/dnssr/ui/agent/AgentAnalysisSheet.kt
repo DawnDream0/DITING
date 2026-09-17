@@ -651,59 +651,9 @@ internal fun AgentAnalysisSheetContent(
 }
 
 /**
- * Text formatter that renders Markdown-style headings and highlights.
+ * Text formatter that renders Markdown-style headings, lists, code blocks, and highlights.
  */
 @Composable
 private fun FormattedAnalysisText(rawText: String) {
-    val lines = remember(rawText) { rawText.lines() }
-
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        lines.forEach { line ->
-            val trimmed = line.trim()
-            when {
-                trimmed.startsWith("###") -> {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = trimmed.removePrefix("###").trim(),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                trimmed.startsWith("##") -> {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = trimmed.removePrefix("##").trim(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
-                    Row(modifier = Modifier.padding(start = 4.dp)) {
-                        Text(
-                            text = "• ",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = trimmed.drop(2).trim(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-                trimmed.isBlank() -> {
-                    Spacer(modifier = Modifier.height(2.dp))
-                }
-                else -> {
-                    Text(
-                        text = trimmed,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
-    }
+    MarkdownViewer(markdown = rawText)
 }

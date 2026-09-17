@@ -277,7 +277,7 @@ class SettingsRouteActivity : AppLocalizedActivity() {
             )
             Routes.OUTBOUND_PROXY_APP_SELECTION -> OutboundProxyAppsScreen(onBack, ::finishOutboundProxyAppSelection)
             Routes.BLOCK_RESPONSE_SETTINGS -> BlockResponseSettingsScreen(onBack, onRuntimeDnsSettingsChanged)
-            Routes.AGENT_API_SETTINGS -> AgentApiSettingsScreen(onBack)
+            Routes.AGENT_API_SETTINGS -> AgentApiSettingsScreen(onBack, onNavigate = onNavigate)
             Routes.AGENT_API_CREDENTIALS -> AgentApiCredentialsScreen(onBack)
             Routes.AGENT_API_PRESETS -> AgentApiPresetsScreen(onBack)
             Routes.AGENT_API_PARAMS -> AgentApiParamsScreen(onBack)
