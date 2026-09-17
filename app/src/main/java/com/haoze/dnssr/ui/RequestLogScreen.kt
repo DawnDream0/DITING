@@ -20,13 +20,20 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import com.haoze.dnssr.SettingsRouteActivity
+import com.haoze.dnssr.ui.agent.AgentAnalysisSheet
+import com.haoze.dnssr.ui.agent.AnalysisTarget
 import com.haoze.dnssr.ui.components.AppAlertDialog as AlertDialog
 import com.haoze.dnssr.ui.components.SettingsItemSpacing
 import com.haoze.dnssr.ui.components.SettingsScaffold
@@ -116,6 +123,7 @@ fun RequestLogScreen(
     var pendingDomain by remember { mutableStateOf<String?>(null) }
     var pendingRuleScope by remember { mutableStateOf(RuleScope.DNS) }
     var showStatusDialog by remember { mutableStateOf(false) }
+    var activeAnalysisTarget by remember { mutableStateOf<AnalysisTarget?>(null) }
     val scope = rememberCoroutineScope()
 
     val visibleItems = state.items
@@ -174,6 +182,13 @@ fun RequestLogScreen(
                         Icons.Default.FilterList,
                         localizedText("选择状态"),
                         tint = if (status != RequestStatus.ALL) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = { activeAnalysisTarget = AnalysisTarget.RecentTraffic(source) }) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = localizedText("智能体分析流量"),
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
                 IconButton(
@@ -266,27 +281,49 @@ fun RequestLogScreen(
         )
     }
     pendingDomain?.let { domain ->
-        DomainActionDialog(domain, { pendingDomain = null }, {
-            context.copyToClipboard("domain", domain); pendingDomain = null
-        }, { allow ->
-            val ruleScope = pendingRuleScope
-            scope.launch(Dispatchers.IO) {
-                val success = if (allow) {
-                    AllowListManager(database.allowRuleDao(), scope = ruleScope).addRule(domain)
-                } else {
-                    BlockListManager(database.blockRuleDao(), scope = ruleScope).addRule(domain)
-                }
-                withContext(Dispatchers.Main) {
-                    if (success) {
-                        RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, if (allow) "allow" else "block", domain, ruleScope)
-                        onRuntimeDnsSettingsChanged()
+        DomainActionDialog(
+            domain = domain,
+            dismiss = { pendingDomain = null },
+            copy = {
+                context.copyToClipboard("domain", domain)
+                pendingDomain = null
+            },
+            add = { allow ->
+                val ruleScope = pendingRuleScope
+                scope.launch(Dispatchers.IO) {
+                    val success = if (allow) {
+                        AllowListManager(database.allowRuleDao(), scope = ruleScope).addRule(domain)
+                    } else {
+                        BlockListManager(database.blockRuleDao(), scope = ruleScope).addRule(domain)
                     }
-                    context.showToast(if (success) "已添加规则" else "规则格式无效", Toast.LENGTH_SHORT)
-                    pendingDomain = null
+                    withContext(Dispatchers.Main) {
+                        if (success) {
+                            RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, if (allow) "allow" else "block", domain, ruleScope)
+                            onRuntimeDnsSettingsChanged()
+                        }
+                        context.showToast(if (success) "已添加规则" else "规则格式无效", Toast.LENGTH_SHORT)
+                        pendingDomain = null
+                    }
                 }
+            },
+            analyze = {
+                activeAnalysisTarget = AnalysisTarget.Domain(domain)
+                pendingDomain = null
             }
-        })
+        )
     }
+
+    AgentAnalysisSheet(
+        target = activeAnalysisTarget,
+        onDismiss = { activeAnalysisTarget = null },
+        onNavigateToSettings = {
+            context.startActivity(SettingsRouteActivity.createIntent(context, Routes.AGENT_API_SETTINGS))
+        },
+        onRuleAdded = {
+            onRuntimeDnsSettingsChanged()
+            viewModel.refresh()
+        }
+    )
 }
 
 @Composable
@@ -309,7 +346,7 @@ private fun RequestLogCard(item: RequestLogItem, onLongClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = {}, onLongClick = onLongClick)
+            .combinedClickable(onClick = onLongClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -323,10 +360,42 @@ private fun RequestLogCard(item: RequestLogItem, onLongClick: () -> Unit) {
 }
 
 @Composable
-fun DomainActionDialog(domain: String, dismiss: () -> Unit, copy: () -> Unit, add: (Boolean) -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, title = { Text(localizedText("处理域名")) }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(domain); SettingsOutlinedActionButton(copy, Modifier.fillMaxWidth()) { Text(localizedText("复制域名")) }; SettingsOutlinedActionButton({ add(true) }, Modifier.fillMaxWidth()) { Text(localizedText("加入白名单规则")) }; SettingsOutlinedActionButton({ add(false) }, Modifier.fillMaxWidth()) { Text(localizedText("加入屏蔽规则")) }
-    } }, confirmButton = { TextButton(dismiss) { Text(localizedText("取消")) } })
+fun DomainActionDialog(
+    domain: String,
+    dismiss: () -> Unit,
+    copy: () -> Unit,
+    add: (Boolean) -> Unit,
+    analyze: (() -> Unit)? = null
+) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text(localizedText("处理域名")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(domain, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                if (analyze != null) {
+                    SettingsOutlinedActionButton(analyze, Modifier.fillMaxWidth()) {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            localizedText("智能体分析该域名"),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                SettingsOutlinedActionButton(copy, Modifier.fillMaxWidth()) { Text(localizedText("复制域名")) }
+                SettingsOutlinedActionButton({ add(true) }, Modifier.fillMaxWidth()) { Text(localizedText("加入白名单规则")) }
+                SettingsOutlinedActionButton({ add(false) }, Modifier.fillMaxWidth()) { Text(localizedText("加入屏蔽规则")) }
+            }
+        },
+        confirmButton = { TextButton(dismiss) { Text(localizedText("取消")) } }
+    )
 }
 
 private val requestTimeFormatter = ThreadLocal.withInitial {

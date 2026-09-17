@@ -74,5 +74,8 @@ object Routes {
     const val CO_BUILDER_LIST = "co_builder_list"
     const val APP_TRAFFIC_STATS = "app_traffic_stats"
     const val AGENT_API_SETTINGS = "agent_api_settings"
+    const val AGENT_API_CREDENTIALS = "agent_api_credentials"
+    const val AGENT_API_PRESETS = "agent_api_presets"
+    const val AGENT_API_PARAMS = "agent_api_params"
     const val OPTIONAL_FEATURES = "optional_features"
 }

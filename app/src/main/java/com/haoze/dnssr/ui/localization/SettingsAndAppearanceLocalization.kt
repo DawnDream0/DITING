@@ -16,6 +16,7 @@ internal fun translateSettingsAndAppearanceExact(text: String): String? = when (
     "统计各应用的网络连接数、上传与下载流量明细" -> "Statistics on network connections, upload and download traffic details for each app"
     "选择单一服务、智能选择、最快响应或依次尝试策略" -> "Select single provider, smart selection, fastest response, or fallback strategy"
     "删除缓存、日志或域名与地址过滤规则" -> "Delete cache, logs, or domain and address filtering rules"
+    "配置大语言模型端点与密钥，为日志研判和网络诊断提供智能分析" -> "Configure LLM endpoints and keys to provide intelligent analysis for log evaluation and network diagnostics"
     "配置大语言模型端点与密钥，供外部或插件调用" -> "Configure large language model endpoints and keys for external or plugin access"
     "清除全部流量记录？" -> "Clear all traffic records?"
     "关闭“通知常驻”只会停止 VPN 未运行时的监控提醒。VPN 正在运行时，系统要求的前台服务通知会继续显示。" -> "Disabling “Persistent notification” stops monitoring reminders only while the VPN is not running. The required foreground-service notification remains while the VPN is running."

@@ -7,6 +7,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.ui.platform.LocalContext
+import com.haoze.dnssr.SettingsRouteActivity
+import com.haoze.dnssr.ui.agent.AgentAnalysisSheet
+import com.haoze.dnssr.ui.agent.AnalysisTarget
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -15,7 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +48,8 @@ fun ModernLogDashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    var showAgentAnalysis by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.refresh()
@@ -84,6 +93,13 @@ fun ModernLogDashboardScreen(
         },
         onBack = onBack,
         actions = {
+            IconButton(onClick = { showAgentAnalysis = true }) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = localizedText("智能体网络分析"),
+                    tint = colors.primary
+                )
+            }
             IconButton(onClick = viewModel::refresh) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
@@ -135,5 +151,18 @@ fun ModernLogDashboardScreen(
                 }
             }
         }
+    }
+
+    if (showAgentAnalysis) {
+        AgentAnalysisSheet(
+            target = AnalysisTarget.RecentTraffic(),
+            onDismiss = { showAgentAnalysis = false },
+            onNavigateToSettings = {
+                context.startActivity(SettingsRouteActivity.createIntent(context, Routes.AGENT_API_SETTINGS))
+            },
+            onRuleAdded = {
+                viewModel.refresh()
+            }
+        )
     }
 }

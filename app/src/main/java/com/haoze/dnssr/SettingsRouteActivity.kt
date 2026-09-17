@@ -278,6 +278,9 @@ class SettingsRouteActivity : AppLocalizedActivity() {
             Routes.OUTBOUND_PROXY_APP_SELECTION -> OutboundProxyAppsScreen(onBack, ::finishOutboundProxyAppSelection)
             Routes.BLOCK_RESPONSE_SETTINGS -> BlockResponseSettingsScreen(onBack, onRuntimeDnsSettingsChanged)
             Routes.AGENT_API_SETTINGS -> AgentApiSettingsScreen(onBack)
+            Routes.AGENT_API_CREDENTIALS -> AgentApiCredentialsScreen(onBack)
+            Routes.AGENT_API_PRESETS -> AgentApiPresetsScreen(onBack)
+            Routes.AGENT_API_PARAMS -> AgentApiParamsScreen(onBack)
             Routes.DATA_CLEANUP -> SettingsGuideHost(SettingsGuides.DATA_CLEANUP) { DataCleanupScreen(onBack, requestedTitle ?: ScreenDestinations.dataCleanup.title, onRuntimeDnsSettingsChanged, onExitApp) }
             Routes.CONFIG_TRANSFER -> SettingsGuideHost(SettingsGuides.CONFIG_TRANSFER) { ConfigTransferScreen(onBack, "备份与迁移") }
             Routes.CONFIG_IMPORT_EXPORT -> SettingsGuideHost(SettingsGuides.CONFIG_TRANSFER) { ConfigTransferScreen(onBack, "备份与迁移") }

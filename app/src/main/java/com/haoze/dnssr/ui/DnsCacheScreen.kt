@@ -11,10 +11,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.haoze.dnssr.SettingsRouteActivity
+import com.haoze.dnssr.data.AppDatabase
+import com.haoze.dnssr.data.entity.RuleScope
+import com.haoze.dnssr.ui.Routes
+import com.haoze.dnssr.ui.agent.AgentAnalysisSheet
+import com.haoze.dnssr.ui.agent.AnalysisTarget
+import com.haoze.dnssr.vpn.AllowListManager
+import com.haoze.dnssr.vpn.BlockListManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,7 +76,12 @@ fun DnsCacheScreen(
     val params by viewModel.params.collectAsStateWithLifecycle()
     val nowMillis by viewModel.nowMillis.collectAsStateWithLifecycle()
     val entries = viewModel.entries.collectAsLazyPagingItems()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val database = remember(context) { AppDatabase.getInstance(context) }
     var isSearchActive by remember { mutableStateOf(false) }
+    var activeAnalysisTarget by remember { mutableStateOf<AnalysisTarget?>(null) }
+    var pendingDomain by remember { mutableStateOf<String?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     NavigationSettledEffect {
@@ -115,6 +136,15 @@ fun DnsCacheScreen(
                 }
             }
             IconButton(
+                onClick = { activeAnalysisTarget = AnalysisTarget.RecentTraffic() }
+            ) {
+                Icon(
+                    Icons.Filled.AutoAwesome,
+                    contentDescription = localizedText("智能体网络分析"),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            IconButton(
                 onClick = {
                     viewModel.refreshCacheList()
                     entries.refresh()
@@ -145,7 +175,8 @@ fun DnsCacheScreen(
                         ) {
                             DnsCacheItem(
                                 entry = entry,
-                                nowMillis = nowMillis
+                                nowMillis = nowMillis,
+                                onClick = { pendingDomain = entry.queryName }
                             )
                         }
                     }
@@ -180,12 +211,56 @@ fun DnsCacheScreen(
             }
         }
     }
+
+    pendingDomain?.let { domain ->
+        DomainActionDialog(
+            domain = domain,
+            dismiss = { pendingDomain = null },
+            copy = {
+                context.copyToClipboard("domain", domain)
+                pendingDomain = null
+            },
+            add = { allow ->
+                scope.launch(Dispatchers.IO) {
+                    val success = if (allow) {
+                        AllowListManager(database.allowRuleDao(), scope = RuleScope.DNS).addRule(domain)
+                    } else {
+                        BlockListManager(database.blockRuleDao(), scope = RuleScope.DNS).addRule(domain)
+                    }
+                    withContext(Dispatchers.Main) {
+                        if (success) {
+                            RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, if (allow) "allow" else "block", domain, RuleScope.DNS)
+                            entries.refresh()
+                        }
+                        context.showToast(if (success) "已添加规则" else "规则格式无效", Toast.LENGTH_SHORT)
+                        pendingDomain = null
+                    }
+                }
+            },
+            analyze = {
+                activeAnalysisTarget = AnalysisTarget.Domain(domain)
+                pendingDomain = null
+            }
+        )
+    }
+
+    AgentAnalysisSheet(
+        target = activeAnalysisTarget,
+        onDismiss = { activeAnalysisTarget = null },
+        onNavigateToSettings = {
+            context.startActivity(SettingsRouteActivity.createIntent(context, Routes.AGENT_API_SETTINGS))
+        },
+        onRuleAdded = {
+            entries.refresh()
+        }
+    )
 }
 
 @Composable
 private fun DnsCacheItem(
     entry: DnsCacheEntity,
-    nowMillis: Long
+    nowMillis: Long,
+    onClick: (() -> Unit)? = null
 ) {
     val remaining = max(0L, (entry.expiresAt - nowMillis + 999L) / 1000L)
     val expirationText = if (remaining == 0L) {
@@ -196,6 +271,7 @@ private fun DnsCacheItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {

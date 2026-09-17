@@ -1,10 +1,6 @@
 package com.haoze.dnssr.ui
 
-import android.content.ClipboardManager
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,83 +10,67 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.haoze.dnssr.ui.components.SettingsInfoText
+import com.haoze.dnssr.ui.components.SettingsItem
 import com.haoze.dnssr.ui.components.SettingsSurfaceGroup
 import com.haoze.dnssr.ui.components.SettingsSwitchItem
 import com.haoze.dnssr.ui.settings.AgentApiConfig
-import com.haoze.dnssr.ui.settings.AgentApiPresetStore
 import com.haoze.dnssr.ui.settings.ModelPreset
 
 /**
- * Authorization switch item for allowing plugins to call Agent API.
+ * Main overview and status card on the Agent API hub page.
  */
 @Composable
-internal fun AgentApiAuthorizationCard(
-    enabled: Boolean,
+internal fun AgentApiStatusCard(
+    config: AgentApiConfig,
+    activePreset: ModelPreset?,
     onEnabledChange: (Boolean) -> Unit
 ) {
     SettingsSurfaceGroup(
-        content = listOf {
-            SettingsSwitchItem(
-                title = localizedText("允许插件调用智能体 API"),
-                subtitle = localizedText("开启后，获得授权的外挂插件可直接复用软件配置的 API 密钥发起大模型分析与查询"),
-                checked = enabled,
-                onCheckedChange = onEnabledChange
-            )
-        }
-    )
-}
-
-/**
- * Provider presets selection chips and preset management entry buttons.
- */
-@Composable
-internal fun AgentApiPresetsCard(
-    presets: List<ModelPreset>,
-    activePresetId: String?,
-    onPresetSelected: (ModelPreset) -> Unit,
-    onManagePresets: () -> Unit,
-    onAddPreset: () -> Unit
-) {
-    SettingsSurfaceGroup(
         content = listOf(
+            {
+                SettingsSwitchItem(
+                    title = localizedText("启用智能体分析"),
+                    subtitle = localizedText("开启后，可在 DNS 日志、请求日志、仪表盘等页面使用大模型智能研判域名威胁与网络流量"),
+                    checked = config.enabled,
+                    onCheckedChange = onEnabledChange
+                )
+            },
             {
                 Column(
                     modifier = Modifier
@@ -98,56 +78,65 @@ internal fun AgentApiPresetsCard(
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     Text(
-                        text = localizedText("快速切换服务商"),
+                        text = localizedText("当前服务运行状态"),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        presets.forEach { preset ->
-                            FilterChip(
-                                selected = preset.id == activePresetId,
-                                onClick = { onPresetSelected(preset) },
-                                label = { Text(preset.name) }
+                        // Model Card
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
                             )
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = localizedText("当前模型"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = activePreset?.name ?: config.model,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = localizedText("预设模板随官方模型下线节奏维护，点击右侧“管理预设”可增删改，或添加自己的私有网关。"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onManagePresets,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Filled.Edit, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(localizedText("管理预设"))
-                    }
-                    OutlinedButton(
-                        onClick = onAddPreset,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(localizedText("新增预设"))
+
+                        // Credential Card
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = localizedText("API 凭据"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (config.apiKey.isNotBlank()) "已就绪 (sk-••••)" else "未配置 Key",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (config.apiKey.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -156,343 +145,153 @@ internal fun AgentApiPresetsCard(
 }
 
 /**
- * Credentials configuration form: API Key, Base URL, Model name, and Server Model Fetch.
+ * Secondary settings page navigation entry group.
  */
 @Composable
-internal fun AgentApiCredentialsCard(
-    config: AgentApiConfig,
-    apiKeyVisible: Boolean,
-    onToggleApiKeyVisible: () -> Unit,
-    onConfigChange: (AgentApiConfig) -> Unit,
-    isFetchingModels: Boolean,
-    modelFetchError: String?,
-    onFetchModelsClick: () -> Unit
+internal fun AgentApiNavigationGroup(
+    onNavigateToCredentials: () -> Unit,
+    onNavigateToPresets: () -> Unit,
+    onNavigateToParams: () -> Unit
 ) {
-    val context = LocalContext.current
-
     SettingsSurfaceGroup(
         content = listOf(
             {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = config.apiKey,
-                        onValueChange = { input ->
-                            val composite = AgentApiTextParser.parseCompositeUrlAndKey(input)
-                            if (composite != null) {
-                                val (extractedUrl, remaining) = composite
-                                onConfigChange(config.copy(baseUrl = extractedUrl, apiKey = remaining))
-                                Toast.makeText(context, "已自动识别并填入 Base URL 和 API Key", Toast.LENGTH_SHORT).show()
-                                return@OutlinedTextField
-                            }
-                            val sanitized = AgentApiTextParser.sanitizeInput(input.removePrefix("Bearer "))
-                            onConfigChange(config.copy(apiKey = sanitized))
-                        },
-                        label = { Text(localizedText("API Key (密钥)")) },
-                        placeholder = { Text("sk-...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = false,
-                        maxLines = 4,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
-                        visualTransformation = if (apiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            Row {
-                                IconButton(onClick = {
-                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = cm.primaryClip
-                                    if (clip != null && clip.itemCount > 0) {
-                                        val pasteText = clip.getItemAt(0).text?.toString().orEmpty()
-                                        if (pasteText.isNotBlank()) {
-                                            val tip = AgentApiTextParser.parseAndApplyApiText(pasteText, config, onConfigChange)
-                                            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, "剪贴板为空", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } else {
-                                        Toast.makeText(context, "剪贴板为空", Toast.LENGTH_SHORT).show()
-                                    }
-                                }) {
-                                    Icon(Icons.Filled.ContentPaste, contentDescription = "粘贴")
-                                }
-                                if (config.apiKey.isNotEmpty()) {
-                                    IconButton(onClick = { onConfigChange(config.copy(apiKey = "")) }) {
-                                        Icon(Icons.Filled.Clear, contentDescription = "清空")
-                                    }
-                                }
-                                IconButton(onClick = onToggleApiKeyVisible) {
-                                    Icon(
-                                        if (apiKeyVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                        contentDescription = if (apiKeyVisible) "隐藏" else "显示"
-                                    )
-                                }
-                            }
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = localizedText("凭据保存在本地私有安全存储中，不会上传到任何第三方服务器。"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                SettingsNavigationRow(
+                    icon = Icons.Filled.Key,
+                    title = localizedText("服务商与密钥 (Credentials)"),
+                    subtitle = localizedText("配置服务地址 Base URL、API Key 凭据与连通性测速"),
+                    onClick = onNavigateToCredentials
+                )
             },
             {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = config.baseUrl,
-                        onValueChange = { input ->
-                            val cleaned = AgentApiTextParser.sanitizeInput(input)
-                            onConfigChange(config.copy(baseUrl = cleaned))
-                        },
-                        label = { Text(localizedText("服务地址 (Base URL)")) },
-                        placeholder = { Text("https://api.deepseek.com/v1") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = false,
-                        maxLines = 3,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
-                        trailingIcon = {
-                            Row {
-                                if (config.baseUrl.isNotEmpty()) {
-                                    IconButton(onClick = { onConfigChange(config.copy(baseUrl = "")) }) {
-                                        Icon(Icons.Filled.Clear, contentDescription = "清空")
-                                    }
-                                }
-                                IconButton(onClick = {
-                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = cm.primaryClip
-                                    if (clip != null && clip.itemCount > 0) {
-                                        val pasteText = clip.getItemAt(0).text?.toString().orEmpty()
-                                        val cleaned = AgentApiTextParser.sanitizeInput(pasteText)
-                                        if (cleaned.isNotBlank()) {
-                                            onConfigChange(config.copy(baseUrl = cleaned))
-                                            Toast.makeText(context, "已从剪贴板粘贴服务地址", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }) {
-                                    Icon(Icons.Filled.ContentPaste, contentDescription = "粘贴")
-                                }
-                            }
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = localizedText("兼容 OpenAI 协议规范，端点支持自动适配补全 /chat/completions。"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                SettingsNavigationRow(
+                    icon = Icons.Filled.Layers,
+                    title = localizedText("模型与预设中心 (Presets)"),
+                    subtitle = localizedText("官方精选模板（DeepSeek、GPT、Kimi 等）、自定义网关与在线模型拉取"),
+                    onClick = onNavigateToPresets
+                )
             },
             {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = config.model,
-                        onValueChange = { input ->
-                            val cleaned = AgentApiTextParser.sanitizeInput(input)
-                            onConfigChange(config.copy(model = cleaned))
-                        },
-                        label = { Text(localizedText("模型名称 (Model)")) },
-                        placeholder = { Text(AgentApiConfig.DEFAULT_MODEL) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = false,
-                        maxLines = 2,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        AgentApiPresetStore.MODEL_SUGGESTIONS.forEach { m ->
-                            SuggestionChip(
-                                onClick = { onConfigChange(config.copy(model = m)) },
-                                label = { Text(m, style = MaterialTheme.typography.labelSmall) }
-                            )
-                        }
-                    }
-                }
-            },
-            {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onFetchModelsClick,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isFetchingModels
-                    ) {
-                        if (isFetchingModels) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(localizedText("正在拉取模型列表..."))
-                        } else {
-                            Icon(Icons.Filled.CloudDownload, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(localizedText("从服务端拉取可用模型"))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = modelFetchError
-                            ?: localizedText("通过 OpenAI 兼容的 /models 端点获取该服务商当前真实提供的模型，避免手写模型名过期。"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (modelFetchError != null) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
+                SettingsNavigationRow(
+                    icon = Icons.Filled.Psychology,
+                    title = localizedText("推理参数与系统设定 (Params)"),
+                    subtitle = localizedText("专家系统提示词 (System Prompt)、采样温度 (Temperature) 等高级参数"),
+                    onClick = onNavigateToParams
+                )
             }
         )
     )
 }
 
+@Composable
+private fun SettingsNavigationRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    SettingsItem(
+        title = title,
+        subtitle = subtitle,
+        leadingIcon = icon,
+        onClick = onClick
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
 /**
- * Advanced persona and system prompt configuration card.
+ * Playground card for testing agent intelligence directly from the settings screen.
  */
 @Composable
-internal fun AgentApiPromptCard(
-    systemPrompt: String,
-    onSystemPromptChange: (String) -> Unit
+internal fun AgentApiPlaygroundCard(
+    onAnalyzeDomain: (String) -> Unit,
+    onAnalyzeTraffic: () -> Unit
 ) {
+    var testDomain by remember { mutableStateOf("tracking.analytics-service.net") }
+
     SettingsSurfaceGroup(
         content = listOf {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
-                OutlinedTextField(
-                    value = systemPrompt,
-                    onValueChange = onSystemPromptChange,
-                    label = { Text(localizedText("全局 System Prompt")) },
-                    placeholder = { Text("例如：你是一名网络安全与 DNS 威胁情报专家...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 5
-                )
-                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = localizedText("智能体实战演练与体验"),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = localizedText("当插件未指定系统提示词时，将自动注入此全局设定。"),
+                    text = localizedText("输入任意域名，即时体验大模型安全归属研判、风险等级评分与处置建议："),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = testDomain,
+                    onValueChange = { testDomain = it },
+                    label = { Text(localizedText("测试域名")) },
+                    placeholder = { Text("example.com") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            if (testDomain.isNotBlank()) {
+                                onAnalyzeDomain(testDomain.trim())
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(localizedText("研判测试域名"))
+                    }
+
+                    OutlinedButton(
+                        onClick = onAnalyzeTraffic,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(localizedText("诊断当前网络"))
+                    }
+                }
             }
         }
     )
 }
 
 /**
- * Connectivity verification controls, live test result display card, and reset button.
- */
-@Composable
-internal fun AgentApiVerificationCard(
-    isTesting: Boolean,
-    testResultText: String?,
-    testResultSuccess: Boolean?,
-    onTestConnection: () -> Unit,
-    onResetDefaults: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Button(
-            onClick = onTestConnection,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isTesting
-        ) {
-            if (isTesting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(localizedText("正在连线验证..."))
-            } else {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(localizedText("测试 API 连通性"))
-            }
-        }
-
-        AnimatedVisibility(visible = testResultText != null) {
-            val isSuccess = testResultSuccess == true
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isSuccess) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.errorContainer
-                    }
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        imageVector = if (isSuccess) Icons.Filled.CheckCircle else Icons.Filled.Error,
-                        contentDescription = null,
-                        tint = if (isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = testResultText.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isSuccess) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onErrorContainer
-                        }
-                    )
-                }
-            }
-        }
-
-        OutlinedButton(
-            onClick = onResetDefaults,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Filled.Refresh, contentDescription = null)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(localizedText("恢复默认配置"))
-        }
-    }
-}
-
-/**
- * Informational note regarding plugin permissions and AI API usage.
+ * Informational note regarding Agent API features across app modules.
  */
 @Composable
 internal fun AgentApiNoticeSection() {
     SettingsInfoText(
-        localizedText("提示：配置此智能体服务后，所有申请了 AI_AGENT 权限的外挂插件均可通过 ai.chat(...) 或 ai.analyzeDnsLogs(...) 无缝调用大模型进行域名安全评估与实时 DNS 日志深度审查。")
+        localizedText("提示：配置智能体服务后，您可以在软件的【DNS 日志】、【HTTP 请求日志】、【日志仪表盘】及【DNS 缓存】等页面随时点击“智能体分析”按钮，对异常流量和未知域名进行实时 AI 深度研判并一键应用处置策略。")
     )
 }
