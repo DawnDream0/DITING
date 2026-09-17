@@ -1,39 +1,27 @@
 package com.haoze.dnssr.vpn
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.os.Process
 import android.util.Log
-import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
+import com.haoze.dnssr.ui.DnsResolutionMode
+import com.haoze.dnssr.ui.OutboundProxyConfig
+import com.haoze.dnssr.ui.RaceModeStrategy
+import com.haoze.dnssr.vpn.cache.DnsCachePolicy
+import com.haoze.dnssr.vpn.cache.DnsResponseCache
+import com.haoze.dnssr.vpn.traffic.TrafficStatsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import com.haoze.dnssr.ui.DnsResolutionMode
-import com.haoze.dnssr.ui.OutboundProxyConfig
-import com.haoze.dnssr.vpn.cache.DnsCachePolicy
-import com.haoze.dnssr.vpn.cache.DnsResponseCache
-import com.haoze.dnssr.data.entity.DnsLogEntity
-import tunnel.AppUidResolver
 import tunnel.BatchLogCallback
 import tunnel.BootstrapLogCallback
 import tunnel.DomainChecker
 import tunnel.Engine
 import tunnel.HttpLogCallback
-import tunnel.LogCallback
 import tunnel.OutboundProxyStatusCallback
 import tunnel.RaceLogCallback
 import tunnel.SocketProtector
 import tunnel.TrafficCallback
-import tunnel.UIDResolver
-import com.haoze.dnssr.ui.RaceModeStrategy
-import com.haoze.dnssr.vpn.traffic.TrafficStatsManager
 import java.io.File
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import org.json.JSONObject
-import org.json.JSONArray
 
 /**
  * Owns the GPL-3.0 Go full-TUN data plane.
@@ -65,6 +53,22 @@ class GoInspectionTunnel(
 ) {
     private val engine = Engine()
     private val uidPackageCache = UidPackageCache(context)
+    private val ruleManager = GoTunnelRuleManager(
+        context = context,
+        vpnService = vpnService,
+        engine = engine,
+        dnsPolicy = dnsPolicy,
+        cnameRewriteRuleManager = cnameRewriteRuleManager,
+        goUrlRuleManager = goUrlRuleManager,
+        inspectionEnabled = inspectionEnabled,
+        ruleIndexDirectory = ruleIndexDirectory,
+        packageUidProvider = ::packageUid
+    )
+    private val logProcessor = GoTunnelLogProcessor(
+        dnsPolicy = dnsPolicy,
+        dnsLogger = dnsLogger,
+        dnsCache = dnsCache
+    )
     private var startJob: Job? = null
 
     fun start(tunFileDescriptor: Int): Boolean = runCatching {
@@ -115,48 +119,23 @@ class GoInspectionTunnel(
      * engine (includes static subscription paths and small rule sets).
      */
     fun pushRuleSnapshot() {
-        val snapshotJson = dnsPolicy.buildRuleSnapshotJson(ruleIndexDirectory)
-        runCatching {
-            val err = engine.applyRuleSnapshot(snapshotJson)
-            if (!err.isNullOrBlank()) {
-                Log.w(TAG, "applyRuleSnapshot error: $err")
-            } else {
-                Log.d(TAG, "applyRuleSnapshot succeeded")
-            }
-        }.onFailure { Log.w(TAG, "Failed to push rule snapshot to Go engine", it) }
+        ruleManager.pushRuleSnapshot()
     }
 
     fun updateRewriteRules() {
-        dnsPolicy.invalidateCache()
-        updateCnameRewriteRules()
-        updateRequestRules()
-        updatePassthroughRules()
-        pushRuleSnapshot()
+        ruleManager.updateRewriteRules()
     }
 
     fun updatePassthroughRules() {
-        runCatching {
-            val presetRules = DefaultWhitelistSeeder.parseAssetWhitelist(context).map { it.first }
-            val customBypassRules = AppRulesSettingsStore.getHttpsBypassRules(context)
-            val combined = (presetRules + customBypassRules).filter { it.isNotBlank() }
-            engine.setExtraPassthroughSuffixes(combined.joinToString("\n"))
-        }.onFailure { Log.w(TAG, "Failed to update HTTPS bypass rules", it) }
+        ruleManager.updatePassthroughRules()
     }
 
     fun updateCnameRewriteRules() {
-        if (!inspectionEnabled || !AppRulesSettingsStore.isAddressRulesEnabled(vpnService)) {
-            engine.setRewriteRules("")
-            return
-        }
-        engine.setRewriteRules(JSONObject(cnameRewriteRuleManager.cnameRedirects()).toString())
+        ruleManager.updateCnameRewriteRules()
     }
 
     fun updateRequestRules() {
-        if (!inspectionEnabled || !AppRulesSettingsStore.isAddressRulesEnabled(vpnService)) {
-            engine.setRequestRules("")
-            return
-        }
-        engine.setRequestRules(runBlocking { goUrlRuleManager.jsonSnapshot() })
+        ruleManager.updateRequestRules()
     }
 
     @Synchronized
@@ -184,25 +163,17 @@ class GoInspectionTunnel(
 
     @Synchronized
     fun syncAppAllowlist(rules: Map<String, Set<String>>) {
-        val root = JSONObject()
-        for ((pkg, domains) in rules) {
-            val uid = packageUid(pkg) ?: continue
-            val validDomains = domains.filter { it.isNotBlank() }
-            val arr = JSONArray()
-            validDomains.forEach { arr.put(it) }
-            root.put(uid.toString(), arr)
-        }
-        engine.setAppAllowlist(root.toString())
+        ruleManager.syncAppAllowlist(rules)
     }
 
     private fun configureEngine(selectedPackages: Set<String>) {
-		val outboundError = engine.configureOutboundProxy(outboundProxyConfig.toNativeJson())
-		require(outboundError.isBlank()) { outboundError }
-		engine.setOutboundProxyStatusCallback(object : OutboundProxyStatusCallback {
-			override fun onOutboundProxyStatus(state: String, message: String) {
-				vpnService.onOutboundProxyStatus(state, message)
-			}
-		})
+        val outboundError = engine.configureOutboundProxy(outboundProxyConfig.toNativeJson())
+        require(outboundError.isBlank()) { outboundError }
+        engine.setOutboundProxyStatusCallback(object : OutboundProxyStatusCallback {
+            override fun onOutboundProxyStatus(state: String, message: String) {
+                vpnService.onOutboundProxyStatus(state, message)
+            }
+        })
         syncDnsConfig(
             dnsConfig.providers,
             dnsConfig.mode,
@@ -258,7 +229,7 @@ class GoInspectionTunnel(
             override fun onDNSQueryBatch(jsonLogs: String) {
                 if (jsonLogs.isBlank()) return
                 scope.launch {
-                    processLogBatch(jsonLogs)
+                    logProcessor.processLogBatch(jsonLogs)
                 }
             }
         })
@@ -339,7 +310,7 @@ class GoInspectionTunnel(
             ) {
                 scope.launch {
                     val httpOutcome = outcome.toHttpRequestOutcome()
-                    val blockSubscriptionId = resolveHttpBlockSubscriptionId(authority, httpOutcome, packageName.ifBlank { null })
+                    val blockSubscriptionId = logProcessor.resolveHttpBlockSubscriptionId(authority, httpOutcome, packageName.ifBlank { null })
                     httpRequestLogger.log(
                         packageName = packageName,
                         authority = authority.ifBlank { null },
@@ -370,256 +341,10 @@ class GoInspectionTunnel(
         updatePassthroughRules()
     }
 
-    private suspend fun processLogBatch(jsonLogs: String) {
-        val array = runCatching { JSONArray(jsonLogs) }.getOrNull() ?: return
-        val len = array.length()
-        if (len == 0) return
-
-        val entities = ArrayList<DnsLogEntity>(len)
-        for (i in 0 until len) {
-            val obj = array.optJSONObject(i) ?: continue
-            val domain = obj.optString("d")
-            val blocked = obj.optBoolean("b")
-            val queryType = obj.optInt("t")
-            val responseTimeMs = obj.optLong("r")
-            val appName = obj.optString("a")
-            val resolvedIPs = obj.optString("i")
-            val blockedBy = obj.optString("k")
-            val errorMessage = obj.optString("e")
-            val cached = obj.optBoolean("c")
-            val timestamp = obj.optLong("ts").takeIf { it > 0 } ?: System.currentTimeMillis()
-
-            val result = when {
-                errorMessage.isNotBlank() -> LogResult.ERROR
-                blockedBy.startsWith("rewrite=") -> LogResult.REWRITTEN
-                blocked -> LogResult.BLOCKED
-                else -> LogResult.PASSED
-            }
-            val effectivePackage = appName.ifBlank { null }
-            val effectiveBlockedBy: String
-            val blockSubId: Long?
-            val isConnectionLog = blockedBy == "connection"
-
-            if (result == LogResult.BLOCKED) {
-                val decision = dnsPolicy.evaluate(domain, effectivePackage)
-                val ruleTypeTag = if (decision.isAppSpecific) "app rule" else if (decision.matchedRule != null) "global rule" else null
-                effectiveBlockedBy = if (ruleTypeTag != null && blockedBy.isNotBlank()) "$blockedBy ($ruleTypeTag)" else (ruleTypeTag ?: blockedBy)
-                blockSubId = (decision as? DomainDecision.Block)?.source?.subscriptionIdOrNull()
-                    ?: parseBlockSubscriptionIdFromToken(blockedBy)
-            } else if (blockedBy.startsWith("rewrite=")) {
-                effectiveBlockedBy = blockedBy
-                blockSubId = null
-            } else if (isConnectionLog) {
-                effectiveBlockedBy = "connection"
-                blockSubId = null
-            } else {
-                effectiveBlockedBy = ""
-                blockSubId = null
-            }
-
-            if (dnsLogger.isLoggable(result)) {
-                entities.add(
-                    DnsLogEntity(
-                        timestamp = timestamp,
-                        queryName = domain.lowercase(),
-                        queryType = queryType,
-                        result = result.value,
-                        message = buildDnsLogMessage(appName, resolvedIPs, effectiveBlockedBy, errorMessage, responseTimeMs),
-                        cached = cached,
-                        blockSubscriptionId = blockSubId,
-                        packageName = effectivePackage
-                    )
-                )
-            }
-
-            if (result == LogResult.PASSED && !isConnectionLog) {
-                if (cached) {
-                    dnsCache.recordCacheHit(domain, queryType)
-                } else if (resolvedIPs.isNotBlank()) {
-                    dnsCache.recordResolved(domain, queryType, resolvedIPs)
-                }
-            }
-        }
-
-        if (entities.isNotEmpty()) {
-            dnsLogger.logBatch(entities)
-        }
-    }
-
-    private fun resolveHttpBlockSubscriptionId(
-        authority: String,
-        outcome: HttpRequestOutcome,
-        packageName: String? = null
-    ): Long? {
-        if (outcome != HttpRequestOutcome.BLOCKED) return null
-        return resolveBlockSubscriptionId(authority, packageName)
-    }
-
-    private fun resolveBlockSubscriptionId(authority: String, packageName: String? = null): Long? {
-        if (authority.isBlank()) return null
-        val source = (dnsPolicy.evaluate(authority, packageName) as? DomainDecision.Block)?.source ?: return null
-        return source.subscriptionIdOrNull()
-    }
-
-    private fun parseBlockSubscriptionIdFromToken(blockedBy: String): Long? {
-        return blockedBy
-            .split(',')
-            .map { it.trim() }
-            .firstNotNullOfOrNull { token ->
-                if (token.startsWith("sub_")) token.removePrefix("sub_").toLongOrNull() else null
-            }
-    }
-    private fun HttpsDnsConfigSnapshot.toJson(): String = JSONObject()
-            .put("mode", mode.storageValue)
-            .put("blockResponse", blockResponseMode.goValue)
-            .put("dynamicResponse", JSONObject()
-                .put("enabled", dynamicBlockResponseConfig.enabled)
-                .put("requestThreshold", dynamicBlockResponseConfig.requestThreshold)
-                .put("windowSeconds", dynamicBlockResponseConfig.windowSeconds)
-                .put("nxDomainDurationSeconds", dynamicBlockResponseConfig.nxDomainDurationSeconds))
-            .put("cache", JSONObject()
-                .put("enabled", cachePolicy.enabled)
-                .put("mode", cachePolicy.mode.storageValue)
-                .put("maxTtlSeconds", cachePolicy.maxTtlSeconds)
-                .put("fixedTtlSeconds", cachePolicy.fixedTtlSeconds)
-                .put("minTtlEnabled", cachePolicy.minTtlEnabled)
-                .put("minTtlSeconds", cachePolicy.minTtlSeconds)
-                .put("staleFallbackEnabled", cachePolicy.staleFallbackEnabled)
-                .put("staleFallbackSeconds", cachePolicy.staleFallbackSeconds))
-            .put("providers", JSONArray().apply {
-                providers.forEach { provider ->
-                    put(JSONObject()
-                        .put("id", provider.id)
-                        .put("protocol", provider.protocol.goProtocol)
-                        .put("server", when (provider.protocol) {
-                            DnsProtocol.DNS, DnsProtocol.DOT -> provider.hostPort()
-                            DnsProtocol.DOH -> ""
-                        })
-                        .put("url", provider.url))
-                }
-            })
-            .put("bootstrap", JSONObject()
-                .put("enabled", bootstrapEnabled)
-                .put("ips", JSONArray().apply {
-                    bootstrapIps.forEach { entry ->
-                        put(JSONObject()
-                            .put("id", entry.id)
-                            .put("name", entry.name)
-                            .put("ip", entry.ip))
-                    }
-                }))
-            .toString()
-
-    private val DnsProtocol.goProtocol: String
-        get() = when (this) {
-            DnsProtocol.DNS -> "PLAIN"
-            DnsProtocol.DOH -> "DOH"
-            DnsProtocol.DOT -> "DOT"
-        }
-
-    private fun DnsProvider.hostPort(): String =
-        if (host.contains(':') && !host.startsWith('[')) "[$host]:$port" else "$host:$port"
-
-    private val BlockResponseMode.goValue: String
-        get() = when (this) {
-            BlockResponseMode.NXDOMAIN -> "NXDOMAIN"
-            BlockResponseMode.NODATA -> "NODATA"
-            BlockResponseMode.REFUSED -> "REFUSED"
-            BlockResponseMode.ZERO_ADDRESS -> "CUSTOM_IP"
-        }
-
     private fun packageUid(packageName: String): Int? =
         runCatching { context.packageManager.getPackageUid(packageName, 0) }.getOrNull()
 
     private companion object {
         const val TAG = "GoInspectionTunnel"
     }
-}
-
-@ConsistentCopyVisibility
-data class HttpsDnsConfigSnapshot private constructor(
-    val providers: List<DnsProvider>,
-    val mode: DnsResolutionMode,
-    val blockResponseMode: BlockResponseMode,
-    val dynamicBlockResponseConfig: DynamicBlockResponseConfig,
-    val cachePolicy: DnsCachePolicy,
-    val bootstrapEnabled: Boolean = false,
-    val bootstrapIps: List<BootstrapIpEntry> = emptyList()
-) {
-    companion object {
-        fun create(
-            providers: List<DnsProvider>,
-            mode: DnsResolutionMode,
-            blockResponseMode: BlockResponseMode,
-            dynamicBlockResponseConfig: DynamicBlockResponseConfig,
-            cachePolicy: DnsCachePolicy,
-            bootstrapEnabled: Boolean = false,
-            bootstrapIps: List<BootstrapIpEntry> = emptyList()
-        ): HttpsDnsConfigSnapshot {
-            require(providers.isNotEmpty()) { "DNS provider list must not be empty" }
-            val selected = if (mode == DnsResolutionMode.SINGLE) listOf(providers.first()) else providers
-            return HttpsDnsConfigSnapshot(
-                selected,
-                mode,
-                blockResponseMode,
-                dynamicBlockResponseConfig,
-                cachePolicy,
-                bootstrapEnabled,
-                bootstrapIps
-            )
-        }
-    }
-}
-
-private fun buildDnsLogMessage(
-    appName: String,
-    resolvedIPs: String,
-    blockedBy: String,
-    errorMessage: String,
-    responseTimeMs: Long
-): String? = listOfNotNull(
-    appName.takeIf { it.isNotBlank() }?.let { "app=$it" },
-    resolvedIPs.takeIf { it.isNotBlank() }?.let { "resolved=$it" },
-    blockedBy.takeIf { it.isNotBlank() }?.let { "blocked_by=$it" },
-    errorMessage.takeIf { it.isNotBlank() }?.let { "error=$it" },
-    responseTimeMs.takeIf { it > 0 }?.let { "elapsed=${it}ms" }
-).joinToString(", ").takeIf { it.isNotEmpty() }
-
-
-private fun String.subscriptionIdOrNull(): Long? =
-    if (startsWith("sub_")) removePrefix("sub_").toLongOrNull() else null
-
-private fun String.toHttpRequestOutcome(): HttpRequestOutcome = when (this) {
-    "blocked" -> HttpRequestOutcome.BLOCKED
-    "rewritten" -> HttpRequestOutcome.REWRITTEN
-    "passthrough" -> HttpRequestOutcome.PASSTHROUGH
-    "handshake_failed" -> HttpRequestOutcome.HANDSHAKE_FAILED
-    "upstream_failed" -> HttpRequestOutcome.UPSTREAM_FAILED
-    "decryption_failed" -> HttpRequestOutcome.DECRYPTION_FAILED
-    "invalid" -> HttpRequestOutcome.INVALID
-    "error" -> HttpRequestOutcome.ERROR
-    else -> HttpRequestOutcome.ALLOWED
-}
-
-private class CachedConnectionOwnerUidResolver(private val cache: UidPackageCache) : UIDResolver {
-    override fun resolveUID(
-        protocol: Long,
-        localIP: String,
-        localPort: Long,
-        remoteIP: String,
-        remotePort: Long
-    ): Long {
-        return cache.resolveUid(
-            protocol.toInt(),
-            localIP,
-            localPort.toInt(),
-            remoteIP,
-            remotePort.toInt()
-        ).toLong()
-    }
-}
-
-private class CachedAppPackageResolver(private val cache: UidPackageCache) : AppUidResolver {
-    override fun packageForUid(uid: Long): String =
-        cache.resolvePackageForUid(uid.toInt()).orEmpty()
 }
