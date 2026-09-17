@@ -37,7 +37,7 @@ interface DnsLogDao {
         SELECT blockSubscriptionId AS subscriptionId, COUNT(*) AS hits
         FROM dns_log
         WHERE timestamp >= :since
-            AND (result = :blockedResult OR result = 'REWRITTEN')
+            AND result = :blockedResult
             AND blockSubscriptionId IS NOT NULL
         GROUP BY blockSubscriptionId
     """)
