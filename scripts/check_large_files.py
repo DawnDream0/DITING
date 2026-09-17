@@ -3,7 +3,7 @@
 
 """
 大文件检测脚本 (KT & Go)：递归扫描项目中的 Kotlin (.kt) 和 Go (.go) 源文件，
-筛选出行数大于指定阈值（默认 800 行）的文件，输出行数、文件类型与相对路径，
+筛选出行数大于指定阈值（默认 600 行）的文件，输出行数、文件类型与相对路径，
 支持命令行参数自定义阈值、指定目录、扩展名、排序规则等。
 """
 
@@ -182,16 +182,55 @@ def format_table(
     return "\n".join(lines)
 
 
+def is_standalone_console() -> bool:
+    """检测是否运行在独立控制台窗口中（例如在资源管理器中双击打开）。
+
+    在 Windows 下通过 GetConsoleProcessList 检测当前控制台关联的进程数：
+    - 在已有终端（CMD / PowerShell / Windows Terminal 等）中运行时，进程数通常 >= 3；
+    - 在文件管理器中双击运行（由 explorer 或 py.exe 启动新控制台）时，进程数通常 <= 2。
+    """
+    if sys.platform != "win32":
+        return False
+
+    # 管道或输入重定向时（非交互式环境/CI），绝不暂停
+    if not (hasattr(sys.stdin, "isatty") and sys.stdin.isatty()):
+        return False
+
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        proc_list = (ctypes.c_uint * 16)()
+        count = kernel32.GetConsoleProcessList(proc_list, 16)
+        if count <= 2:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def pause_console(prompt: str = "按 Enter 键退出...") -> None:
+    """在控制台暂停，等待用户输入，防止窗口在双击打开时立即关闭。"""
+    try:
+        print()
+        input(prompt)
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def main():
+    standalone = is_standalone_console()
+    should_pause = standalone and ("--no-pause" not in sys.argv)
+
     parser = argparse.ArgumentParser(
-        description="检测项目中大于指定行数（默认 800 行）的 Kotlin (.kt) 和 Go (.go) 文件"
+        description="检测项目中大于指定行数（默认 600 行）的 Kotlin (.kt) 和 Go (.go) 文件"
     )
     parser.add_argument(
         "-t",
         "--threshold",
         type=int,
-        default=800,
-        help="行数阈值（默认: 800）",
+        default=600,
+        help="行数阈值（默认: 600）",
     )
     parser.add_argument(
         "-d",
@@ -224,41 +263,67 @@ def main():
         action="store_true",
         help="列出所有扫描到的文件及行数（忽略阈值过滤）",
     )
-
-    args = parser.parse_args()
-
-    if args.dir:
-        root_dir = os.path.abspath(args.dir)
-    else:
-        # 脚本位于 scripts/ 下，默认上级目录为项目根目录
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        root_dir = os.path.abspath(os.path.join(script_dir, ".."))
-
-    target_exts = {
-        ext.strip().lower() if ext.strip().startswith(".") else f".{ext.strip().lower()}"
-        for ext in args.extensions.split(",")
-        if ext.strip()
-    }
-
-    ignore_dirs = set() if args.include_build else DEFAULT_IGNORE_DIRS
-
-    matched_files, stats = scan_files(
-        root_dir=root_dir,
-        target_exts=target_exts,
-        threshold=args.threshold,
-        ignore_dirs=ignore_dirs,
-        show_all=args.all,
+    parser.add_argument(
+        "--pause",
+        dest="pause",
+        action="store_true",
+        default=None,
+        help="运行结束后暂停控制台，等待按键退出（默认在双击运行时自动启用）",
+    )
+    parser.add_argument(
+        "--no-pause",
+        dest="pause",
+        action="store_false",
+        help="运行结束后不暂停控制台",
     )
 
-    report = format_table(
-        matched_files=matched_files,
-        threshold=args.threshold,
-        root_dir=root_dir,
-        stats=stats,
-        sort_by=args.sort,
-    )
+    try:
+        args = parser.parse_args()
+        if args.pause is not None:
+            should_pause = args.pause
 
-    print(report)
+        if args.dir:
+            root_dir = os.path.abspath(args.dir)
+        else:
+            # 脚本位于 scripts/ 下，默认上级目录为项目根目录
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            root_dir = os.path.abspath(os.path.join(script_dir, ".."))
+
+        target_exts = {
+            ext.strip().lower() if ext.strip().startswith(".") else f".{ext.strip().lower()}"
+            for ext in args.extensions.split(",")
+            if ext.strip()
+        }
+
+        ignore_dirs = set() if args.include_build else DEFAULT_IGNORE_DIRS
+
+        matched_files, stats = scan_files(
+            root_dir=root_dir,
+            target_exts=target_exts,
+            threshold=args.threshold,
+            ignore_dirs=ignore_dirs,
+            show_all=args.all,
+        )
+
+        report = format_table(
+            matched_files=matched_files,
+            threshold=args.threshold,
+            root_dir=root_dir,
+            stats=stats,
+            sort_by=args.sort,
+        )
+
+        print(report)
+    except KeyboardInterrupt:
+        print("\n\n已取消操作。")
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"\n运行出错: {e}", file=sys.stderr)
+        raise
+    finally:
+        if should_pause:
+            pause_console()
 
 
 if __name__ == "__main__":
