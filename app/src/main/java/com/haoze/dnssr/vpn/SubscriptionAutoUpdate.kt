@@ -266,7 +266,8 @@ private fun subscriptionManagerFor(
         BlockListManager(database.blockRuleDao(), ruleIndexDirectory, scope, reloadCacheAfterChanges = false),
         AllowListManager(database.allowRuleDao(), ruleIndexDirectory, scope, reloadCacheAfterChanges = false),
         RewriteRuleManager(database.rewriteRuleDao(), ruleIndexDirectory, scope, reloadCacheAfterChanges = false),
-        scope
+        scope,
+        context.cacheDir
     )
 }
 

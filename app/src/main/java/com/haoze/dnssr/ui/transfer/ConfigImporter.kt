@@ -53,7 +53,8 @@ class ConfigImporter(private val context: Context) {
         BlockListManager(database.blockRuleDao(), ruleIndexDir, scope = scope, reloadCacheAfterChanges = false),
         AllowListManager(database.allowRuleDao(), ruleIndexDir, scope = scope, reloadCacheAfterChanges = false),
         RewriteRuleManager(database.rewriteRuleDao(), ruleIndexDir, scope, reloadCacheAfterChanges = false),
-        scope
+        scope,
+        context.cacheDir
     )
 
     suspend fun import(

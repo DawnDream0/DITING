@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.Reader
 
 /**
@@ -28,7 +29,8 @@ class SubscriptionManager(
     private val blockListManager: BlockListManager,
     private val allowListManager: AllowListManager,
     private val rewriteRuleManager: RewriteRuleManager,
-    private val scope: RuleScope = RuleScope.DNS
+    private val scope: RuleScope = RuleScope.DNS,
+    private val cacheDir: File? = null
 ) {
     companion object {
         private const val TAG = "SubscriptionManager"
@@ -51,7 +53,8 @@ class SubscriptionManager(
     private val downloader = SubscriptionDownloader(
         subscriptionDao,
         ruleStreamer,
-        ruleStorage
+        ruleStorage,
+        cacheDir = cacheDir
     )
 
     private val _importing = MutableStateFlow(false)
@@ -242,12 +245,17 @@ class SubscriptionManager(
             saved = subscription.copy(id = id)
             _importingSubscriptionId.value = id
 
+            val total = contentLoader().buffered().use { reader ->
+                CategorizedRuleStreamImporter.countRules(reader)
+            }
+
             val summary = contentLoader().buffered().use { reader ->
                 ruleStreamer.import(
                     reader,
                     ruleStorage.sourceTag(id),
                     normalizedKind,
                     enabled = true,
+                    totalHint = total,
                     onEmpty = { typeMismatchOnly ->
                         throw SubscriptionUpdateException(
                             if (typeMismatchOnly) {
@@ -258,8 +266,8 @@ class SubscriptionManager(
                             retryable = false
                         )
                     }
-                ) { processed ->
-                    progressReporter?.invoke(processed, processed)
+                ) { processed, totalHint ->
+                    progressReporter?.invoke(processed, totalHint)
                 }
             }
             lastImportSummary = summary

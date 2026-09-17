@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 internal class SubscriptionDownloader(
@@ -19,10 +20,19 @@ internal class SubscriptionDownloader(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+        .build(),
+    private val cacheDir: File? = null
 ) {
     companion object {
         private const val TAG = "SubscriptionDownloader"
+    }
+
+    private fun createTempFile(prefix: String): File {
+        return if (cacheDir != null && (cacheDir.exists() || cacheDir.mkdirs())) {
+            File.createTempFile(prefix, ".tmp", cacheDir)
+        } else {
+            File.createTempFile(prefix, ".tmp")
+        }
     }
 
     suspend fun downloadAndImport(
@@ -73,31 +83,42 @@ internal class SubscriptionDownloader(
         requestUrl: String,
         onProgressUpdate: (suspend (current: Int, totalHint: Int) -> Unit)?
     ): InitialImportResult {
-        val progressTotalHint = subscription.ruleCount
         val request = Request.Builder().url(requestUrl).build()
         return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw httpFailure(response)
             val body = response.body ?: throw SubscriptionUpdateException("订阅响应为空", retryable = false)
-            val summary = body.charStream().buffered().use { reader ->
-                ruleStreamer.import(
-                    reader,
-                    ruleStorage.sourceTag(subscriptionId),
-                    kind,
-                    enabled,
-                    onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) }
-                ) { processed ->
-                    onProgressUpdate?.invoke(processed, maxOf(processed, progressTotalHint))
+            val tempFile = createTempFile("sub_import_${subscriptionId}_")
+            try {
+                tempFile.outputStream().use { out ->
+                    body.byteStream().copyTo(out)
                 }
+                val totalRules = tempFile.bufferedReader().use { reader ->
+                    CategorizedRuleStreamImporter.countRules(reader)
+                }
+                val summary = tempFile.bufferedReader().use { reader ->
+                    ruleStreamer.import(
+                        reader = reader,
+                        source = ruleStorage.sourceTag(subscriptionId),
+                        kind = kind,
+                        enabled = enabled,
+                        totalHint = totalRules,
+                        onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) },
+                        onProgress = onProgressUpdate
+                    )
+                }
+                ruleStorage.refreshAllCaches()
+                val finalTotal = if (totalRules > 0) totalRules else summary.importedCount
+                onProgressUpdate?.invoke(finalTotal, finalTotal)
+                InitialImportResult(
+                    ruleCount = summary.importedCount,
+                    ruleSetHash = null,
+                    etag = response.header("ETag"),
+                    lastModified = response.header("Last-Modified"),
+                    summary = summary
+                )
+            } finally {
+                tempFile.delete()
             }
-            ruleStorage.refreshAllCaches()
-            onProgressUpdate?.invoke(summary.importedCount, summary.importedCount)
-            InitialImportResult(
-                ruleCount = summary.importedCount,
-                ruleSetHash = null,
-                etag = response.header("ETag"),
-                lastModified = response.header("Last-Modified"),
-                summary = summary
-            )
         }
     }
 
@@ -135,7 +156,6 @@ internal class SubscriptionDownloader(
         useValidators: Boolean,
         onProgressUpdate: (suspend (current: Int, totalHint: Int) -> Unit)?
     ): StreamingDownloadResult {
-        val progressTotalHint = subscription.ruleCount
         val request = Request.Builder().url(requestUrl).apply {
             if (useValidators) {
                 subscription.httpEtag?.let { header("If-None-Match", it) }
@@ -151,23 +171,35 @@ internal class SubscriptionDownloader(
             }
             if (!response.isSuccessful) throw httpFailure(response)
             val body = response.body ?: throw SubscriptionUpdateException("订阅响应为空", retryable = false)
-            val summary = body.charStream().buffered().use { reader ->
-                ruleStreamer.import(
-                    reader,
-                    stagingSource,
-                    kind,
-                    enabled,
-                    onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) }
-                ) { processed ->
-                    onProgressUpdate?.invoke(processed, maxOf(processed, progressTotalHint))
+            val tempFile = createTempFile("sub_stage_${subscription.id}_")
+            try {
+                tempFile.outputStream().use { out ->
+                    body.byteStream().copyTo(out)
                 }
+                val totalRules = tempFile.bufferedReader().use { reader ->
+                    CategorizedRuleStreamImporter.countRules(reader)
+                }
+                val summary = tempFile.bufferedReader().use { reader ->
+                    ruleStreamer.import(
+                        reader = reader,
+                        source = stagingSource,
+                        kind = kind,
+                        enabled = enabled,
+                        totalHint = totalRules,
+                        onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) },
+                        onProgress = onProgressUpdate
+                    )
+                }
+                val finalTotal = if (totalRules > 0) totalRules else summary.importedCount
+                onProgressUpdate?.invoke(finalTotal, finalTotal)
+                StreamingDownloadResult.Content(
+                    summary,
+                    response.header("ETag"),
+                    response.header("Last-Modified")
+                )
+            } finally {
+                tempFile.delete()
             }
-            onProgressUpdate?.invoke(summary.importedCount, summary.importedCount)
-            StreamingDownloadResult.Content(
-                summary,
-                response.header("ETag"),
-                response.header("Last-Modified")
-            )
         }
     }
 

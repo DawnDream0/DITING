@@ -179,16 +179,24 @@ internal fun SubscriptionItem(
             val current = (progress?.current ?: -1).coerceAtLeast(0)
             val fraction = if (total > 0) (current.toFloat() / total).coerceIn(0f, 1f) else 0f
             Spacer(modifier = Modifier.height(8.dp))
+            val isLocal = subscription.sourceType == SubscriptionSourceType.LOCAL
+            val prefix = if (isLocal) "正在导入规则..." else "正在下载并更新规则..."
+            val progressText = when {
+                total > 0 -> "$prefix $current / $total（${(fraction * 100).toInt()}%）"
+                current > 0 -> "$prefix 已导入 $current 条"
+                else -> prefix
+            }
             Text(
-                text = localizedText(
-                    if (total > 0) "正在下载并更新规则... $current / $total（${(fraction * 100).toInt()}%）"
-                    else "正在下载并更新规则..."
-                ),
+                text = localizedText(progressText),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(4.dp))
-            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+            if (total > 0) {
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
         }
         if (subscription.importState == SubscriptionImportState.FAILED) {
             Spacer(modifier = Modifier.height(8.dp))

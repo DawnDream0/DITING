@@ -40,6 +40,7 @@ internal fun translateRulesAndSubscriptionExact(text: String): String? = when (t
     "清除 DNS 的域名屏蔽、白名单和覆写规则" -> "Clear DNS domain block, allowlist, and override rules"
     "清除 Go 隧道的域名、URL、白名单和覆写规则" -> "Clear Go tunnel domain, URL, allowlist, and override rules"
     "导入规则..." -> "Importing rules..."
+    "正在导入规则..." -> "Importing rules..."
     "导入 DNS 过滤订阅文件" -> "Import DNS filtering subscription file"
     "导入 hosts 覆写订阅文件" -> "Import hosts override subscription file"
     "导入 HTTPS 过滤订阅文件" -> "Import HTTPS filtering subscription file"
@@ -460,6 +461,9 @@ internal fun translateRulesAndSubscriptionExact(text: String): String? = when (t
 
 internal fun translateRulesAndSubscriptionPattern(text: String): String? = when {
     text.contains(" / ") && text.startsWith("正在导入规则...") -> text.replace("正在导入规则...", "Importing rules...")
+    text.contains(" / ") && text.startsWith("正在下载并更新规则...") -> text.replace("正在下载并更新规则...", "Downloading and updating rules...")
+    text.startsWith("正在下载并更新规则... 已导入 ") -> text.replace("正在下载并更新规则... 已导入 ", "Downloading and updating rules... Imported ").replace(" 条", " rules")
+    text.startsWith("正在导入规则... 已导入 ") -> text.replace("正在导入规则... 已导入 ", "Importing rules... Imported ").replace(" 条", " rules")
     text.startsWith("导出订阅规则") -> text.replace("导出订阅规则", "Export subscription rules")
     text.startsWith("导出手动添加规则") -> text.replace("导出手动添加规则", "Export manually added rules")
     text.startsWith("导出全部规则") -> text.replace("导出全部规则", "Export all rules")

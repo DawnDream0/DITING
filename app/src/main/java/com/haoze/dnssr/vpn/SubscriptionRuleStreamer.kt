@@ -23,6 +23,23 @@ internal class CategorizedRuleStreamImporter(
 ) {
     companion object {
         const val CHUNK_SIZE = 1000
+
+        fun countRules(reader: BufferedReader): Int {
+            var count = 0
+            reader.forEachLine { line ->
+                val parsed = AdGuardRuleParser.parseCategorizedLine(line)
+                count += parsed.blockRules.size + parsed.allowRules.size + parsed.rewriteRules.size
+            }
+            return count
+        }
+
+        fun countHostsRules(reader: BufferedReader): Int {
+            var count = 0
+            reader.forEachLine { line ->
+                count += AdGuardRuleParser.parseHostsRewriteLine(line).size
+            }
+            return count
+        }
     }
 
     /**
@@ -36,8 +53,9 @@ internal class CategorizedRuleStreamImporter(
         kind: String,
         enabled: Boolean,
         refreshCache: Boolean = false,
+        totalHint: Int = 0,
         onEmpty: (typeMismatchOnly: Boolean) -> Nothing,
-        onProgress: (suspend (processed: Int) -> Unit)? = null
+        onProgress: (suspend (processed: Int, total: Int) -> Unit)? = null
     ): RuleImportSummary {
         // Accept all categorized rules across all subscription kinds:
         // - Adblock domain lists can include $dnsrewrite= rules.
@@ -64,7 +82,7 @@ internal class CategorizedRuleStreamImporter(
             insertedBlock += inserted
             processed += inserted
             blockBatch.clear()
-            onProgress?.invoke(processed)
+            onProgress?.invoke(processed, totalHint)
         }
 
         suspend fun flushAllow() {
@@ -73,7 +91,7 @@ internal class CategorizedRuleStreamImporter(
             insertedAllow += inserted
             processed += inserted
             allowBatch.clear()
-            onProgress?.invoke(processed)
+            onProgress?.invoke(processed, totalHint)
         }
 
         suspend fun flushRewrite() {
@@ -82,7 +100,7 @@ internal class CategorizedRuleStreamImporter(
             insertedRewrite += inserted
             processed += inserted
             rewriteBatch.clear()
-            onProgress?.invoke(processed)
+            onProgress?.invoke(processed, totalHint)
         }
 
         reader.useLines { lines ->
@@ -113,6 +131,8 @@ internal class CategorizedRuleStreamImporter(
 
         if (parsedRules == 0) onEmpty(typeSkipped > 0)
         val totalInserted = insertedBlock + insertedAllow + insertedRewrite
+        val finalTotal = if (totalHint > 0) totalHint else totalInserted
+        onProgress?.invoke(finalTotal, finalTotal)
         return RuleImportSummary(
             blockCount = insertedBlock,
             allowCount = insertedAllow,

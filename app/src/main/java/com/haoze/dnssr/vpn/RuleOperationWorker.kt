@@ -152,7 +152,8 @@ class RuleOperationWorker(
             blockManager,
             allowManager,
             rewriteManager,
-            ruleScope
+            ruleScope,
+            applicationContext.cacheDir
         )
         var activeSubscriptionId = subscriptionId
         subscriptionManager.progressReporter = { current, total ->
@@ -318,14 +319,18 @@ class RuleOperationWorker(
         }
         RuleOperationType.IMPORT_RULES -> {
             val kind = requestedSubscriptionKind()
-            val msg = openUriReader(requiredUri()).use { reader ->
-                importCategorizedRules(reader, blockManager, allowManager, rewriteManager, type, kind)
+            val uri = requiredUri()
+            val total = openUriReader(uri).use { CategorizedRuleStreamImporter.countRules(it) }
+            val msg = openUriReader(uri).use { reader ->
+                importCategorizedRules(reader, blockManager, allowManager, rewriteManager, type, kind, total)
             }.displayMessage("导入完成")
             OperationExecutionResult(msg)
         }
         RuleOperationType.IMPORT_HOSTS_RULES -> {
-            val msg = openUriReader(requiredUri()).use { reader ->
-                importHostsRules(reader, rewriteManager, type)
+            val uri = requiredUri()
+            val total = openUriReader(uri).use { CategorizedRuleStreamImporter.countHostsRules(it) }
+            val msg = openUriReader(uri).use { reader ->
+                importHostsRules(reader, rewriteManager, type, total)
             }.let { summary ->
                 "hosts 导入完成：新增 ${summary.rewriteCount} 条，跳过 ${summary.duplicateCount} 条"
             }
@@ -374,7 +379,8 @@ class RuleOperationWorker(
         allowManager: AllowListManager,
         rewriteManager: RewriteRuleManager,
         type: RuleOperationType,
-        kind: String
+        kind: String,
+        total: Int
     ): RuleImportSummary {
         val importer = CategorizedRuleStreamImporter(blockManager, allowManager, rewriteManager, IMPORT_CHUNK_SIZE)
         return importer.import(
@@ -383,9 +389,10 @@ class RuleOperationWorker(
             kind = kind,
             enabled = true,
             refreshCache = true,
-            onProgress = { processed ->
-                setProgressAsync(progressData(type, -1, processed, 0))
-                notifyProgress(titleFor(type), processed, 0)
+            totalHint = total,
+            onProgress = { processed, totalHint ->
+                setProgressAsync(progressData(type, -1, processed, totalHint))
+                notifyProgress(titleFor(type), processed, totalHint)
             },
             onEmpty = { typeMismatchOnly ->
                 throw IllegalArgumentException(
@@ -402,7 +409,8 @@ class RuleOperationWorker(
     private suspend fun importHostsRules(
         reader: BufferedReader,
         rewriteManager: RewriteRuleManager,
-        type: RuleOperationType
+        type: RuleOperationType,
+        total: Int
     ): RuleImportSummary {
         val batch = ArrayList<RewriteRule>(IMPORT_CHUNK_SIZE)
         var inserted = 0
@@ -415,8 +423,8 @@ class RuleOperationWorker(
             processed += insertedBatch
             parsed += batch.size
             batch.clear()
-            setProgressAsync(progressData(type, -1, processed, 0))
-            notifyProgress(titleFor(type), processed, 0)
+            setProgressAsync(progressData(type, -1, processed, total))
+            notifyProgress(titleFor(type), processed, total)
         }
         while (true) {
             val line = reader.readLine() ?: break
@@ -426,6 +434,9 @@ class RuleOperationWorker(
             }
         }
         flush()
+        val finalTotal = if (total > 0) total else processed
+        setProgressAsync(progressData(type, -1, finalTotal, finalTotal))
+        notifyProgress(titleFor(type), finalTotal, finalTotal)
         require(parsed > 0) { "文件中没有可导入的真实 IP hosts 规则" }
         return RuleImportSummary(0, 0, inserted, (parsed - inserted).coerceAtLeast(0), 0, 0)
     }

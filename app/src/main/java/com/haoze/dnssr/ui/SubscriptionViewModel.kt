@@ -46,7 +46,8 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
             BlockListManager(database.blockRuleDao(), scope = ruleScope, reloadCacheAfterChanges = false),
             AllowListManager(database.allowRuleDao(), scope = ruleScope, reloadCacheAfterChanges = false),
             com.haoze.dnssr.vpn.RewriteRuleManager(database.rewriteRuleDao(), java.io.File(app.filesDir, "rule-index"), ruleScope, reloadCacheAfterChanges = false),
-            ruleScope
+            ruleScope,
+            app.cacheDir
         )
     }
 
@@ -287,7 +288,8 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
             BlockListManager(database.blockRuleDao(), scope = scope, reloadCacheAfterChanges = false),
             AllowListManager(database.allowRuleDao(), scope = scope, reloadCacheAfterChanges = false),
             com.haoze.dnssr.vpn.RewriteRuleManager(database.rewriteRuleDao(), java.io.File(app.filesDir, "rule-index"), scope, reloadCacheAfterChanges = false),
-            scope
+            scope,
+            app.cacheDir
         )
     }
 
