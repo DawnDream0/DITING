@@ -288,6 +288,10 @@ func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTim
 			if staleEntry != nil {
 				staleResp := dnsCache.buildStaleResponse(queryInfo.RawDNSPayload, staleEntry)
 				if staleResp != nil {
+					var staleMsg dns.Msg
+					if err := staleMsg.Unpack(staleResp); err == nil {
+						e.rememberResolvedIPs(queryInfo.Domain, &staleMsg)
+					}
 					response := BuildForwardedResponse(queryInfo, staleResp)
 					e.writeToTUN(response)
 					e.totalQueries.Add(1)
@@ -321,6 +325,7 @@ func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTim
 		blocked = isUpstreamBlockedMsg(&respMsg)
 		if !blocked {
 			resolvedIPs = resolvedAddressesMsg(&respMsg)
+			e.rememberResolvedIPs(queryInfo.Domain, &respMsg)
 		}
 	} else {
 		blocked = isUpstreamBlocked(resp)
@@ -418,4 +423,26 @@ func resolvedAddressesMsg(response *dns.Msg) string {
 		addresses = append(addresses, address)
 	}
 	return strings.Join(addresses, ",")
+}
+
+func (e *Engine) rememberResolvedIPs(domain string, respMsg *dns.Msg) {
+	if e == nil || e.ipDomainCache == nil || respMsg == nil || len(respMsg.Answer) == 0 {
+		return
+	}
+	cleanDomain := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+	if cleanDomain == "" {
+		return
+	}
+	for _, ans := range respMsg.Answer {
+		switch rr := ans.(type) {
+		case *dns.A:
+			if rr.A != nil && !rr.A.IsUnspecified() && !rr.A.IsLoopback() {
+				e.ipDomainCache.put(rr.A.String(), cleanDomain)
+			}
+		case *dns.AAAA:
+			if rr.AAAA != nil && !rr.AAAA.IsUnspecified() && !rr.AAAA.IsLoopback() {
+				e.ipDomainCache.put(rr.AAAA.String(), cleanDomain)
+			}
+		}
+	}
 }

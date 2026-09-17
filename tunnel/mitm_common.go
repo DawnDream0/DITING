@@ -27,6 +27,7 @@ const (
 type adBlockChecker interface {
 	IsDomainBlocked(host string) bool
 	lookupIP(host string) (net.IP, error)
+	domainForIP(ip net.IP) string
 }
 
 // requestAcceptsHTML returns true when the request's Accept header

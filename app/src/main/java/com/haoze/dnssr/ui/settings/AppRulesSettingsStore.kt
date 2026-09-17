@@ -143,12 +143,10 @@ object AppRulesSettingsStore {
     fun setAppAllowlistRuleMap(context: Context, rules: Map<String, Set<String>>) {
         val json = org.json.JSONObject()
         rules.forEach { (pkg, domains) ->
-            if (pkg.isNotBlank() && pkg != context.packageName && domains.isNotEmpty()) {
+            if (pkg.isNotBlank() && pkg != context.packageName) {
                 val arr = org.json.JSONArray()
                 domains.filter { it.isNotBlank() }.forEach { arr.put(it) }
-                if (arr.length() > 0) {
-                    json.put(pkg, arr)
-                }
+                json.put(pkg, arr)
             }
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
@@ -163,11 +161,7 @@ object AppRulesSettingsStore {
     fun setAppAllowlistDomainsForApp(context: Context, packageName: String, domains: Set<String>) {
         val rules = getAppAllowlistRuleMap(context).toMutableMap()
         val cleanDomains = domains.filter { it.isNotBlank() }.toSet()
-        if (cleanDomains.isEmpty()) {
-            rules.remove(packageName)
-        } else {
-            rules[packageName] = cleanDomains
-        }
+        rules[packageName] = cleanDomains
         setAppAllowlistRuleMap(context, rules)
     }
 

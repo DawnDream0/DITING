@@ -248,15 +248,24 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
                     blockListManager.addRule(ruleStr)
                 }
                 RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, "block", "*", scope)
+                val currentAllowlist = AppRulesSettingsStore.getAppAllowlistDomainsForApp(context, pkg)
+                AppRulesSettingsStore.setAppAllowlistDomainsForApp(context, pkg, currentAllowlist)
+                RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)
             } else {
                 if (existing != null) {
                     blockRuleDao.deleteById(existing.id)
                     blockListManager.syncCachedPattern("*")
                     RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, "block", "*", scope)
                 }
+                val currentAllowlist = AppRulesSettingsStore.getAppAllowlistDomainsForApp(context, pkg)
+                if (currentAllowlist.isEmpty()) {
+                    AppRulesSettingsStore.removeAppAllowlistForApp(context, pkg)
+                    RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)
+                }
             }
             loadRulesForApp(pkg)
             loadAppRuleCounts()
+            loadAllowlistData()
             withContext(Dispatchers.Main) {
                 onResult(if (enabled) "已开启全外联拦截模式" else "已关闭全外联拦截模式")
             }

@@ -100,6 +100,7 @@ type Engine struct {
 	blockedUIDsMu     sync.RWMutex
 	blockedUIDs       map[int]struct{}
 	appAllowlist      appAllowlist
+	ipDomainCache     *ipDomainCache
 	policyEngine      *policyEngine
 
 	// Stack-mode MITM state. When both are non-nil, the stack uses the
@@ -148,6 +149,7 @@ func NewEngine() *Engine {
 		trafficTracker: newTrafficTracker(),
 		logAggregator:  newLogAggregator(),
 		policyEngine:   newPolicyEngine(),
+		ipDomainCache:  newIPDomainCache(2048),
 	}
 	e.filterDNS.Store(true)
 	e.interceptor = NewDnsInterceptor(e, router)
@@ -429,4 +431,11 @@ func CheckDomainInTrieFile(filePath, domain string) bool {
 	}
 	defer t.Close()
 	return t.ContainsOrParent(domain)
+}
+
+func (e *Engine) domainForIP(ip net.IP) string {
+	if e == nil || e.ipDomainCache == nil || ip == nil {
+		return ""
+	}
+	return e.ipDomainCache.get(ip.String())
 }

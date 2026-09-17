@@ -39,9 +39,7 @@ func (e *Engine) SetAppAllowlist(rulesJSON string) {
 						domMap[domain] = struct{}{}
 					}
 				}
-				if len(domMap) > 0 {
-					rules[uid] = domMap
-				}
+				rules[uid] = domMap
 			}
 		}
 	}
@@ -52,12 +50,9 @@ func (e *Engine) SetAppAllowlist(rulesJSON string) {
 	e.appAllowlist.mu.Unlock()
 }
 
-func (e *Engine) appAllowlistDomainAllowed(uid int, domain string) bool {
-	e.appAllowlist.mu.RLock()
-	defer e.appAllowlist.mu.RUnlock()
-	allowedDomains, selected := e.appAllowlist.domains[uid]
-	if !selected {
-		return true
+func domainMatches(allowedDomains map[string]struct{}, domain string) bool {
+	if len(allowedDomains) == 0 {
+		return false
 	}
 	for candidate := strings.TrimSuffix(strings.ToLower(domain), "."); candidate != ""; {
 		if _, ok := allowedDomains[candidate]; ok {
@@ -72,7 +67,20 @@ func (e *Engine) appAllowlistDomainAllowed(uid int, domain string) bool {
 	return false
 }
 
+func (e *Engine) appAllowlistDomainAllowed(uid int, domain string) bool {
+	e.appAllowlist.mu.RLock()
+	defer e.appAllowlist.mu.RUnlock()
+	allowedDomains, selected := e.appAllowlist.domains[uid]
+	if !selected {
+		return true
+	}
+	return domainMatches(allowedDomains, domain)
+}
+
 func (e *Engine) appAllowlistConnectionAllowed(uid int, ip net.IP) bool {
+	if ip.IsLoopback() {
+		return true
+	}
 	e.appAllowlist.mu.RLock()
 	_, selected := e.appAllowlist.domains[uid]
 	expiry := e.appAllowlist.ips[uid][ip.String()]
@@ -81,14 +89,35 @@ func (e *Engine) appAllowlistConnectionAllowed(uid int, ip net.IP) bool {
 }
 
 func (e *Engine) rememberAppAllowlistResponse(uid int, response *dns.Msg) {
-	e.appAllowlist.mu.Lock()
-	defer e.appAllowlist.mu.Unlock()
-	if _, selected := e.appAllowlist.domains[uid]; !selected {
+	if response == nil || len(response.Answer) == 0 {
 		return
 	}
-	if e.appAllowlist.ips[uid] == nil {
-		e.appAllowlist.ips[uid] = make(map[string]time.Time)
+	var qname string
+	if len(response.Question) > 0 {
+		qname = strings.TrimSuffix(strings.ToLower(response.Question[0].Name), ".")
 	}
+
+	e.appAllowlist.mu.Lock()
+	defer e.appAllowlist.mu.Unlock()
+
+	// Find all restricted UIDs that allow this domain:
+	// 1. If incoming query was from a specific restricted UID, check if it allows qname.
+	// 2. Also check all other restricted UIDs because Android's system resolver (netd)
+	// often sends queries with netd's UID or UIDUnknown on behalf of apps.
+	targetUIDs := make([]int, 0, 2)
+	for targetUID, allowed := range e.appAllowlist.domains {
+		if qname != "" && domainMatches(allowed, qname) {
+			targetUIDs = append(targetUIDs, targetUID)
+		} else if targetUID == uid && qname == "" {
+			targetUIDs = append(targetUIDs, targetUID)
+		}
+	}
+
+	if len(targetUIDs) == 0 {
+		return
+	}
+
+	now := time.Now()
 	for _, answer := range response.Answer {
 		var ip net.IP
 		var ttl uint32
@@ -100,8 +129,23 @@ func (e *Engine) rememberAppAllowlistResponse(uid int, response *dns.Msg) {
 		default:
 			continue
 		}
-		if ttl > 0 {
-			e.appAllowlist.ips[uid][ip.String()] = time.Now().Add(time.Duration(ttl) * time.Second)
+		if ttl > 0 && ip != nil && !ip.IsUnspecified() {
+			expiry := now.Add(time.Duration(ttl) * time.Second)
+			ipStr := ip.String()
+			for _, targetUID := range targetUIDs {
+				if e.appAllowlist.ips[targetUID] == nil {
+					e.appAllowlist.ips[targetUID] = make(map[string]time.Time)
+				}
+				e.appAllowlist.ips[targetUID][ipStr] = expiry
+
+				if len(e.appAllowlist.ips[targetUID]) > 256 {
+					for k, exp := range e.appAllowlist.ips[targetUID] {
+						if now.After(exp) {
+							delete(e.appAllowlist.ips[targetUID], k)
+						}
+					}
+				}
+			}
 		}
 	}
 }

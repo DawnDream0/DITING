@@ -107,15 +107,9 @@ object AdGuardRuleParser {
         "hls", "inline-script", "inline-font"
     )
 
-    private fun isWebContextModifierPrefix(lower: String): Boolean {
-        return WEB_ONLY_MODIFIER_PREFIXES.any { lower.startsWith(it) }
-    }
-
-    private fun isStrippableModifier(lower: String): Boolean {
+    private fun isWebOnlyModifier(lower: String): Boolean {
         if (lower in WEB_ONLY_MODIFIER_TOKENS) return true
-        if (lower in setOf("all", "empty", "mp4", "webrtc")) return true
-        // Non-prefix single-token modifiers without '=' in Adblock/ABP lists can be stripped safely
-        return !lower.contains('=')
+        return WEB_ONLY_MODIFIER_PREFIXES.any { lower.startsWith(it) }
     }
 
     fun parseLine(line: String): ParsedRule? = parseSingle(line, allowRule = false)
@@ -404,13 +398,12 @@ object AdGuardRuleParser {
                         // $badfilter disables existing rules. In DNS filtering, ignore it to avoid blocking.
                         return CategorizedLine(ignoredCount = 1)
                     }
-                    isWebContextModifierPrefix(lower) -> {
-                        // Web/browser-specific contextual modifiers (domain=, header=, replace=) cannot safely trigger whole-domain DNS blocking.
+                    isWebOnlyModifier(lower) -> {
+                        // Web/browser-specific modifiers cannot safely trigger whole-domain DNS blocking.
                         return CategorizedLine(ignoredCount = 1)
                     }
-                    isStrippableModifier(lower) -> {
-                        // Browser-specific tokens ($third-party, $popup, $script, $image, $all, etc.)
-                        // are stripped for DNS filtering so pure-domain blocking is preserved.
+                    lower == "all" || lower == "empty" -> {
+                        // $all matches all content types; at DNS level, equivalent to full domain match.
                     }
                     else -> {
                         return CategorizedLine(unsupportedCount = 1)

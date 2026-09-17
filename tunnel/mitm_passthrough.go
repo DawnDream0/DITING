@@ -4,7 +4,12 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 )
+
+func isTLSClientPort(port int) bool {
+	return port == 443 || port == 465 || port == 993 || port == 8443
+}
 
 // mitm_passthrough.go — upstream dial (with IPv6→IPv4 fallback) and
 // bidirectional relay used when the MITM handler decides NOT to
@@ -23,18 +28,31 @@ func dialUpstream(flow flowID, hostname string, blocker adBlockChecker, protectF
 	if engine, ok := blocker.(*Engine); ok && engine.flowOutbound != nil {
 		outbound = engine.flowOutbound
 	}
+	if hostname == "" && blocker != nil {
+		hostname = blocker.domainForIP(flow.serverIP)
+	}
+
 	dst := net.JoinHostPort(flow.serverIP.String(), intToStr(flow.serverPort))
-	ctx, cancel := context.WithTimeout(context.Background(), flowDialTimeout)
-	defer cancel()
+	isV6 := flow.serverIP.To4() == nil
+	dialTimeout := flowDialTimeout
+	if isV6 {
+		dialTimeout = 2 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	conn, err := outbound.DialTCP(ctx, dst)
+	cancel()
 	if err == nil {
 		return conn, nil
 	}
 
-	if hostname != "" && blocker != nil && flow.serverIP.To4() == nil {
+	if isV6 && hostname != "" && blocker != nil {
 		if ip, lerr := blocker.lookupIP(hostname); lerr == nil && ip != nil {
 			alt := net.JoinHostPort(ip.String(), intToStr(flow.serverPort))
-			if altConn, aerr := outbound.DialTCP(ctx, alt); aerr == nil {
+			v4Ctx, v4Cancel := context.WithTimeout(context.Background(), flowDialTimeout)
+			altConn, aerr := outbound.DialTCP(v4Ctx, alt)
+			v4Cancel()
+			if aerr == nil {
 				logf("[TcpStack] v6 dial to %s failed (%v); fell back to v4 %s", dst, err, alt)
 				return altConn, nil
 			}
@@ -51,9 +69,9 @@ func dialUpstream(flow flowID, hostname string, blocker adBlockChecker, protectF
 // long-lived flows live as long as apps need — a former 3-minute hard
 // deadline killed YouTube playback mid-stream as ERR_CONNECTION_ABORTED.
 func relayDirectFromFlow(clientConn net.Conn, flow flowID, blocker adBlockChecker, protectFn func(fd int) bool) {
-	// If destination is IPv6 and port 443 (HTTPS), peek TLS ClientHello to extract SNI.
+	// If destination is IPv6 and a TLS client port (HTTPS, SMTPS, IMAPS), peek TLS ClientHello to extract SNI.
 	// This enables dialUpstream to fall back to IPv4 if the direct IPv6 dial fails (e.g. on pure IPv4 network).
-	if flow.serverIP.To4() == nil && flow.serverPort == 443 {
+	if flow.serverIP.To4() == nil && isTLSClientPort(flow.serverPort) {
 		peeked, peekedReader, err := peekFlow(clientConn, peekSize, peekTimeout)
 		if err == nil && len(peeked) > 0 {
 			sni := ""

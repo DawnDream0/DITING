@@ -112,6 +112,11 @@ func (c *dnsCache) isEnabled() bool {
 func (c *dnsCache) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	for _, e := range c.entries {
+		if e != nil {
+			e.elem = nil
+		}
+	}
 	c.entries = make(map[string]*cacheEntry)
 	c.lruList.Init()
 }
@@ -203,6 +208,7 @@ func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandida
 		delete(c.entries, key)
 		if e.elem != nil {
 			c.lruList.Remove(e.elem)
+			e.elem = nil
 		}
 	}
 	c.mu.Unlock()
@@ -298,6 +304,7 @@ func (c *dnsCache) putMsg(rawQuery, rawResponse []byte, respMsg *dns.Msg) bool {
 	if old, exists := c.entries[key]; exists {
 		if old.elem != nil {
 			c.lruList.Remove(old.elem)
+			old.elem = nil
 		}
 		delete(c.entries, key)
 	} else if len(c.entries) >= c.maxEntries {
@@ -305,7 +312,10 @@ func (c *dnsCache) putMsg(rawQuery, rawResponse []byte, respMsg *dns.Msg) bool {
 		if back != nil {
 			oldest := back.Value.(*cacheEntry)
 			c.lruList.Remove(back)
-			delete(c.entries, oldest.key)
+			if oldest != nil {
+				oldest.elem = nil
+				delete(c.entries, oldest.key)
+			}
 		}
 	}
 

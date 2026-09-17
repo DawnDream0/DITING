@@ -224,6 +224,7 @@ class DnsVpnService : VpnService() {
                 tunnelManager.goInspectionTunnel?.let { tunnel ->
                     tunnel.updateRewriteRules()
                     tunnel.pushRuleSnapshot()
+                    tunnel.clearDnsCache()
                 }
             }
         }

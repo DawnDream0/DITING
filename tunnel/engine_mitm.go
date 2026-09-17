@@ -8,10 +8,9 @@ import (
 	"strings"
 )
 
-// defaultTunMTU matches the VpnService.Builder.setMtu(1500) default in
-// AdBlockVpnService.kt. Keeping them aligned avoids fragmentation in
-// the userspace stack.
-const defaultTunMTU = 1500
+// defaultTunMTU matches the VpnService.Builder.setMtu(1400) default.
+// Keeping them aligned avoids PMTU drop on PPPoE (1492) and mobile networks.
+const defaultTunMTU = 1400
 
 // localAssetSynthIP is the synthetic IPv4 address handed out for
 // resolution of LocalAssetHost. RFC 5737 reserves 198.51.100.0/24 for

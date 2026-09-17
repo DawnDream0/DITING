@@ -49,6 +49,10 @@ class DnsVpnDatabaseComponents {
     var rulesInitializationJob: kotlinx.coroutines.Job? = null
         private set
 
+    suspend fun awaitRulesLoaded() {
+        rulesInitializationJob?.join()
+    }
+
     private lateinit var bootstrapHealthListener: BootstrapHealthStoreListener
 
     /**

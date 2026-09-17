@@ -188,7 +188,6 @@ class GoInspectionTunnel(
         for ((pkg, domains) in rules) {
             val uid = packageUid(pkg) ?: continue
             val validDomains = domains.filter { it.isNotBlank() }
-            if (validDomains.isEmpty()) continue
             val arr = JSONArray()
             validDomains.forEach { arr.put(it) }
             root.put(uid.toString(), arr)

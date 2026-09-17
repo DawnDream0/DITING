@@ -17,6 +17,7 @@ import com.haoze.dnssr.vpn.cache.DnsCachePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.Inet6Address
 
 /**
@@ -139,7 +140,7 @@ class DnsVpnTunnelManager {
         val enableIpv6 = when (ipv6Mode) {
             Ipv6Mode.ENABLED -> true
             Ipv6Mode.DISABLED -> false
-            Ipv6Mode.AUTO -> true // Always enable IPv6 on the virtual interface to capture IPv6 DNS and prevent leaks
+            Ipv6Mode.AUTO -> hasPhysicalIpv6Support(vpnService)
         }
         Log.i(TAG, "establishVpnInterface: ipv6Mode=$ipv6Mode, enableIpv6=$enableIpv6, bypassLan=$bypassLan")
 
@@ -148,7 +149,7 @@ class DnsVpnTunnelManager {
             .addAddress(VPN_ADDRESS_V4, 30)
             .addDnsServer(DNS_SERVER_V4)
             .allowFamily(OsConstants.AF_INET)
-            .setMtu(1500)
+            .setMtu(VPN_MTU)
             .setBlocking(true)
 
         if (enableIpv6) {
@@ -227,6 +228,13 @@ class DnsVpnTunnelManager {
         val pfd = vpnInterface ?: return false
         activeInspectionPackages = inspectionPackages
 
+        // Ensure database rules are loaded into memory caches before pushing initial snapshot
+        runBlocking {
+            withTimeoutOrNull(3000) {
+                dbComponents.awaitRulesLoaded()
+            }
+        }
+
         val tunnel = GoInspectionTunnel(
             context = service,
             vpnService = service,
@@ -296,6 +304,7 @@ class DnsVpnTunnelManager {
         const val DNS_SERVER_V4 = "10.0.0.1"
         const val VPN_ADDRESS_V6 = "fd00:abcd::2"
         const val DNS_SERVER_V6 = "fd00:abcd::1"
+        const val VPN_MTU = 1400
 
         val IPV4_BYPASS_LAN_ROUTES = listOf(
             "1.0.0.0" to 8,
