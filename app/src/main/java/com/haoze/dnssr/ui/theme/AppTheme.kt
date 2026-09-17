@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.LocalContext
  * 主题色风格。
  *
  * SYSTEM 在 Android 12+ 上使用 Monet（Material You）动态取色；
- * 低于 Android 12 或其余预设项使用 [PresetPalettes] 中按 M3 规范生成的完整配色。
+ * 低于 Android 12 或其余预设项使用预设主题色板中按 M3 规范生成的完整配色。
  */
 enum class ThemeColorStyle(
     val storageValue: String,

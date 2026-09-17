@@ -1,77 +1,51 @@
 package com.haoze.dnssr.ui
 
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.AltRoute
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoze.dnssr.data.entity.RewriteTargetType
-import com.haoze.dnssr.ui.components.AppAlertDialog as AlertDialog
-import com.haoze.dnssr.ui.components.RuleConfirmDialog
-import com.haoze.dnssr.ui.components.RuleItemActionsMenu
-import com.haoze.dnssr.ui.components.masterDisabledMessage
 import com.haoze.dnssr.ui.components.RuleFilterChipRow
 import com.haoze.dnssr.ui.components.RuleListCountHeader
 import com.haoze.dnssr.ui.components.RuleListEmptyState
 import com.haoze.dnssr.ui.components.RuleListPaginationBar
 import com.haoze.dnssr.ui.components.RuleSearchField
-import com.haoze.dnssr.ui.components.RuleStatsCard
-import com.haoze.dnssr.ui.components.RuleTagChip
-import com.haoze.dnssr.ui.components.SettingsCornerShape
 import com.haoze.dnssr.ui.components.SettingsItemSpacing
 import com.haoze.dnssr.ui.components.SettingsScaffold
 import com.haoze.dnssr.ui.components.SettingsSurfaceItem
-import kotlinx.coroutines.launch
+import com.haoze.dnssr.ui.components.masterDisabledMessage
 
 @Composable
 fun RewriteListScreen(
@@ -80,7 +54,6 @@ fun RewriteListScreen(
     viewModel: RewriteListViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val stats by viewModel.stats.collectAsStateWithLifecycle()
@@ -96,16 +69,6 @@ fun RewriteListScreen(
     var itemToDelete by remember { mutableStateOf<RewriteListItem?>(null) }
     var showClearUserDialog by remember { mutableStateOf(false) }
     var showTopMenu by remember { mutableStateOf(false) }
-
-    var addDomain by remember { mutableStateOf("") }
-    var addTargetType by remember { mutableStateOf(RewriteTargetType.IPV4) }
-    var addTargetValue by remember { mutableStateOf("") }
-    var addError by remember { mutableStateOf<String?>(null) }
-
-    var editDomain by remember { mutableStateOf("") }
-    var editTargetType by remember { mutableStateOf(RewriteTargetType.IPV4) }
-    var editTargetValue by remember { mutableStateOf("") }
-    var editError by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         viewModel.activate()
@@ -136,10 +99,6 @@ fun RewriteListScreen(
                     leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
                     onClick = {
                         showTopMenu = false
-                        addDomain = ""
-                        addTargetType = RewriteTargetType.IPV4
-                        addTargetValue = ""
-                        addError = null
                         showAddDialog = true
                     }
                 )
@@ -233,10 +192,6 @@ fun RewriteListScreen(
                                 },
                                 onEdit = {
                                     editingItem = item
-                                    editDomain = item.pattern
-                                    editTargetType = item.targetType
-                                    editTargetValue = item.targetValue
-                                    editError = null
                                 },
                                 onDelete = {
                                     itemToDelete = item
@@ -256,10 +211,6 @@ fun RewriteListScreen(
 
             FloatingActionButton(
                 onClick = {
-                    addDomain = ""
-                    addTargetType = RewriteTargetType.IPV4
-                    addTargetValue = ""
-                    addError = null
                     showAddDialog = true
                 },
                 modifier = Modifier
@@ -275,203 +226,46 @@ fun RewriteListScreen(
 
     // Add rule dialog
     if (showAddDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text(localizedText("添加覆写规则")) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = localizedText("将域名解析覆写为指定的 IPv4、IPv6 地址或 CNAME 目标域名。"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(RewriteTargetType.IPV4, RewriteTargetType.IPV6, RewriteTargetType.CNAME).forEach { type ->
-                            FilterChip(
-                                selected = addTargetType == type,
-                                onClick = {
-                                    addTargetType = type
-                                    addError = null
-                                },
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                                label = {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(type)
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = addDomain,
-                        onValueChange = {
-                            addDomain = it
-                            addError = null
-                        },
-                        label = { Text(localizedText("域名，如 example.com")) },
-                        singleLine = true,
-                        shape = SettingsCornerShape,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    val targetLabel = when (addTargetType) {
-                        RewriteTargetType.CNAME -> "目标域名 (CNAME)"
-                        RewriteTargetType.IPV6 -> "IPv6 地址"
-                        else -> "IPv4 地址"
-                    }
-
-                    OutlinedTextField(
-                        value = addTargetValue,
-                        onValueChange = {
-                            addTargetValue = it
-                            addError = null
-                        },
-                        label = { Text(localizedText(targetLabel)) },
-                        supportingText = addError?.let { msg -> { Text(localizedText(msg)) } },
-                        isError = addError != null,
-                        singleLine = true,
-                        shape = SettingsCornerShape,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+        RewriteAddDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { domain, targetType, targetValue ->
+                val result = viewModel.addRule(
+                    domain = domain,
+                    targetType = targetType,
+                    targetValue = targetValue
+                )
+                if (result.isSuccess) {
+                    onRuntimeDnsSettingsChanged()
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        val result = viewModel.addRule(
-                            domain = addDomain,
-                            targetType = addTargetType,
-                            targetValue = addTargetValue
-                        )
-                        result.onSuccess { msg ->
-                            context.showToast(msg, Toast.LENGTH_SHORT)
-                            showAddDialog = false
-                            onRuntimeDnsSettingsChanged()
-                        }.onFailure { err ->
-                            addError = err.message ?: localizedText(context, "添加失败")
-                        }
-                    }
-                }) {
-                    Text(localizedText("添加"))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text(localizedText("取消"))
-                }
+                result
             }
         )
     }
 
     // Edit rule dialog
     editingItem?.let { item ->
-        AlertDialog(
-            onDismissRequest = { editingItem = null },
-            title = { Text(localizedText("编辑覆写规则")) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(RewriteTargetType.IPV4, RewriteTargetType.IPV6, RewriteTargetType.CNAME).forEach { type ->
-                            FilterChip(
-                                selected = editTargetType == type,
-                                onClick = {
-                                    editTargetType = type
-                                    editError = null
-                                },
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                                label = {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(type)
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = editDomain,
-                        onValueChange = {
-                            editDomain = it
-                            editError = null
-                        },
-                        label = { Text(localizedText("域名")) },
-                        singleLine = true,
-                        shape = SettingsCornerShape,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    val targetLabel = when (editTargetType) {
-                        RewriteTargetType.CNAME -> "目标域名 (CNAME)"
-                        RewriteTargetType.IPV6 -> "IPv6 地址"
-                        else -> "IPv4 地址"
-                    }
-
-                    OutlinedTextField(
-                        value = editTargetValue,
-                        onValueChange = {
-                            editTargetValue = it
-                            editError = null
-                        },
-                        label = { Text(localizedText(targetLabel)) },
-                        supportingText = editError?.let { msg -> { Text(localizedText(msg)) } },
-                        isError = editError != null,
-                        singleLine = true,
-                        shape = SettingsCornerShape,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+        RewriteEditDialog(
+            item = item,
+            onDismiss = { editingItem = null },
+            onConfirm = { newPattern, newTargetType, newTargetValue ->
+                val result = viewModel.editRule(
+                    item = item,
+                    newPattern = newPattern,
+                    newTargetType = newTargetType,
+                    newTargetValue = newTargetValue
+                )
+                if (result.isSuccess) {
+                    onRuntimeDnsSettingsChanged()
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        val result = viewModel.editRule(
-                            item = item,
-                            newPattern = editDomain,
-                            newTargetType = editTargetType,
-                            newTargetValue = editTargetValue
-                        )
-                        result.onSuccess { msg ->
-                            context.showToast(msg, Toast.LENGTH_SHORT)
-                            editingItem = null
-                            onRuntimeDnsSettingsChanged()
-                        }.onFailure { err ->
-                            editError = err.message ?: localizedText(context, "修改失败")
-                        }
-                    }
-                }) {
-                    Text(localizedText("保存"))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { editingItem = null }) {
-                    Text(localizedText("取消"))
-                }
+                result
             }
         )
     }
 
     // Delete single rule confirmation dialog
     itemToDelete?.let { item ->
-        RuleConfirmDialog(
-            title = localizedText("删除覆写规则"),
-            message = localizedText("确定要删除覆写规则「${item.pattern} -> ${item.targetValue}」吗？"),
-            confirmText = localizedText("删除"),
+        RewriteDeleteConfirmDialog(
+            item = item,
             onDismiss = { itemToDelete = null },
             onConfirm = {
                 viewModel.deleteRule(item)
@@ -483,10 +277,7 @@ fun RewriteListScreen(
 
     // Clear custom rewrite rules confirmation dialog
     if (showClearUserDialog) {
-        RuleConfirmDialog(
-            title = localizedText("清空自定义覆写"),
-            message = localizedText("确定要清空所有由您添加的自定义覆写规则吗？规则订阅等内容不受影响。"),
-            confirmText = localizedText("确认清空"),
+        RewriteClearUserConfirmDialog(
             onDismiss = { showClearUserDialog = false },
             onConfirm = {
                 viewModel.clearUserRules()
@@ -494,137 +285,5 @@ fun RewriteListScreen(
                 onRuntimeDnsSettingsChanged()
             }
         )
-    }
-
-}
-
-@Composable
-private fun RewriteListStatsCard(stats: RewriteListStats) {
-    RuleStatsCard(
-        icon = Icons.AutoMirrored.Filled.AltRoute,
-        title = localizedText("覆写统计与状态"),
-        activeBadgeText = localizedText("生效中: ${stats.totalActive} 条"),
-        stats = listOf(
-            "IPv4 覆写" to stats.ipv4Count.toString(),
-            "IPv6 覆写" to stats.ipv6Count.toString(),
-            "CNAME 覆写" to stats.cnameCount.toString(),
-            "用户自定义" to "${stats.userEnabled}/${stats.userTotal}"
-        )
-    )
-}
-
-@Composable
-private fun RewriteListItemRow(
-    item: RewriteListItem,
-    onToggle: (Boolean) -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(end = 8.dp)
-                .alpha(if (!item.effectiveEnabled) 0.5f else 1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            // Rule domain
-            Text(
-                text = item.pattern,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            // Rewrite target indicator
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "-> ${item.targetValue}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Tag row
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Source tag
-                if (item.isUserRule) {
-                    RuleTagChip(
-                        text = localizedText("自定义"),
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-                if (item.isSubscription) {
-                    RuleTagChip(
-                        text = item.subscriptionName?.let { localizedText(it) } ?: localizedText("规则订阅"),
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                // Target type tag
-                RuleTagChip(
-                    text = item.targetType,
-                    containerColor = when (item.targetType) {
-                        RewriteTargetType.IPV4 -> MaterialTheme.colorScheme.tertiaryContainer
-                        RewriteTargetType.IPV6 -> MaterialTheme.colorScheme.secondaryContainer
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    },
-                    contentColor = when (item.targetType) {
-                        RewriteTargetType.IPV4 -> MaterialTheme.colorScheme.onTertiaryContainer
-                        RewriteTargetType.IPV6 -> MaterialTheme.colorScheme.onSecondaryContainer
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-
-            // Original rule line (shown when it differs from pattern -> targetValue)
-            val standardLine = "${item.pattern} -> ${item.targetValue}"
-            if (item.rawLine != standardLine && item.rawLine.isNotBlank() && item.rawLine != item.pattern) {
-                Text(
-                    text = item.rawLine,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Switch(
-                checked = item.effectiveEnabled,
-                onCheckedChange = onToggle,
-                enabled = item.masterEnabled,
-                modifier = Modifier.alpha(if (!item.masterEnabled) 0.5f else 1f)
-            )
-
-            RuleItemActionsMenu(
-                onEdit = onEdit,
-                onDelete = onDelete
-            )
-        }
     }
 }
