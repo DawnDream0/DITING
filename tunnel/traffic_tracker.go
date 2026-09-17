@@ -1,3 +1,10 @@
+// traffic_tracker.go provides lock-free, atomic bandwidth and packet accounting per Android UID.
+//
+// Power Optimization & Interval Adaptation:
+// - Dynamic Cadence: Operates at 1s intervals during active use and extends to longer intervals (e.g., 10s) when the screen
+//   is off, allowing device SoCs to enter deep low-power sleep states.
+// - Atomic Consistency: Byte and packet deltas accumulate continuously in atomic counters regardless of reporting cadence.
+
 package tunnel
 
 import (
@@ -8,7 +15,6 @@ import (
 	"time"
 )
 
-// TrafficCallback is the gomobile-compatible callback interface for receiving periodic traffic delta statistics in Kotlin.
 type TrafficCallback interface {
 	OnTrafficStatsTick(jsonDeltas string)
 }
@@ -20,7 +26,6 @@ type uidTrafficCounters struct {
 	rxTotal atomic.Uint64
 }
 
-// TrafficTracker provides lock-free streaming traffic accounting per Android UID.
 type TrafficTracker struct {
 	mu           sync.RWMutex
 	uids         map[int]*uidTrafficCounters
@@ -28,13 +33,9 @@ type TrafficTracker struct {
 	stopChan     chan struct{}
 	wakeChan     chan struct{}
 	running      atomic.Bool
-	tickInterval atomic.Int64 // nanoseconds
+	tickInterval atomic.Int64
 }
 
-// defaultTickInterval is the 1s heartbeat used while the screen is on.
-// Kotlin lowers it when the screen turns off (screen-state driven
-// SetTickIntervalMs) so an idle device stops per-second wakeups and the
-// SoC can reach its deepest idle states.
 const defaultTickInterval = 1 * time.Second
 
 func newTrafficTracker() *TrafficTracker {
@@ -46,10 +47,6 @@ func newTrafficTracker() *TrafficTracker {
 	return t
 }
 
-// SetTickInterval adjusts the periodic tick interval. Safe to call at any
-// time (before or after Start); takes effect on the pending timer
-// immediately. Deltas accumulated in the per-UID atomics are never lost by
-// interval changes — the next tick flushes them (aggregated).
 func (t *TrafficTracker) SetTickInterval(d time.Duration) {
 	if t == nil || d <= 0 {
 		return
@@ -149,9 +146,7 @@ func (t *TrafficTracker) Start() {
 		return
 	}
 	t.stopChan = make(chan struct{})
-	// Capture the channel locally: re-reading the t.stopChan field on every
-	// select would let a stale goroutine (mid-tick during a Stop→Start
-	// handoff) attach to the NEW channel and leak until the next Stop.
+
 	stop := t.stopChan
 
 	go func() {
@@ -163,8 +158,7 @@ func (t *TrafficTracker) Start() {
 				t.tick()
 				timer.Reset(time.Duration(t.tickInterval.Load()))
 			case <-t.wakeChan:
-				// Interval changed: reset the pending timer so the new
-				// cadence applies immediately (shorter AND longer).
+
 				if !timer.Stop() {
 					select {
 					case <-timer.C:
@@ -183,9 +177,7 @@ func (t *TrafficTracker) Stop() {
 	if t == nil || !t.running.Swap(false) {
 		return
 	}
-	// Closing stopChan ends the timer goroutine; the final tick() flushes
-	// whatever deltas accumulated since the last periodic tick, so totals
-	// are conserved regardless of the current interval.
+
 	close(t.stopChan)
 	t.tick()
 }

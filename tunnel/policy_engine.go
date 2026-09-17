@@ -1,3 +1,19 @@
+// policy_engine.go implements the unified high-performance policy engine for domain filtering,
+// evaluating subscription rules, app-specific rules, wildcards, and DTRI binary files with zero JNI overhead.
+//
+// Binary DTRI Format (36-byte Header):
+// - Magic: 0x44545249 ("DTRI"), Version: 1
+// - Stores memory-mapped subscription tries compiled by Kotlin, with embedded bloom filters and source name indices.
+//
+// Rule Evaluation Priority (Highest to Lowest):
+// 1. App-specific $important blocking rules (exact match and wildcards).
+// 2. Global $important blocking rules (including inverted app exclusions and subscription important tries).
+// 3. App-specific whitelist rules (@@, exact and wildcards).
+// 4. Global whitelist rules (@@, including inverted exclusions and subscription allowTrie).
+// 5. App-specific normal blocking rules (including full-app blocks via *$app=pkg).
+// 6. Global normal blocking rules (including inverted exclusions and subscription blockTrie).
+// 7. Default pass (no rules matched).
+
 package tunnel
 
 import (
@@ -15,14 +31,13 @@ import (
 )
 
 const (
-	dtriMagic      = 0x44545249 // "DTRI" in hex
+	dtriMagic      = 0x44545249
 	dtriVersion    = 1
 	dtriHeaderSize = 36
 	dtriNodeSize   = 12
 	dtriEdgeSize   = 12
 )
 
-// dtriReader provides read-only memory-mapped lookup for binary subscription tries compiled by Kotlin.
 type dtriReader struct {
 	file         *os.File
 	data         []byte
@@ -42,7 +57,6 @@ type dtriReader struct {
 	bloom        []byte
 }
 
-// openDTRI opens and memory-maps a DTRI binary file.
 func openDTRI(path string) (*dtriReader, error) {
 	if path == "" {
 		return nil, fmt.Errorf("empty path")
@@ -141,7 +155,6 @@ func openDTRI(path string) (*dtriReader, error) {
 	}, nil
 }
 
-// close unmaps the memory and closes the underlying file.
 func (r *dtriReader) close() {
 	if r == nil {
 		return
@@ -238,13 +251,10 @@ func (r *dtriReader) mightContainDomainOrParent(domain string) bool {
 	return false
 }
 
-// containsOrParent checks if a domain or its parent suffix is present in the trie.
 func (r *dtriReader) containsOrParent(domain string) (bool, string) {
 	return r.containsOrParentWithDisabled(domain, nil)
 }
 
-// containsOrParentWithDisabled checks if a domain or its parent suffix is present in the trie,
-// skipping any pattern suffix present in the disabled set.
 func (r *dtriReader) containsOrParentWithDisabled(domain string, disabled map[string]struct{}) (bool, string) {
 	if r == nil || len(r.data) == 0 {
 		return false, ""
@@ -284,7 +294,6 @@ func (r *dtriReader) containsOrParentWithDisabled(domain string, disabled map[st
 	return false, ""
 }
 
-// wildcardMatcher evaluates glob wildcard rules.
 type wildcardMatcher struct {
 	pattern    string
 	baseDomain string
@@ -292,7 +301,6 @@ type wildcardMatcher struct {
 	regex      *regexp.Regexp
 }
 
-// newWildcardMatcher compiles a wildcard string.
 func newWildcardMatcher(pattern string) *wildcardMatcher {
 	if pattern == "*" {
 		return &wildcardMatcher{pattern: pattern, isAll: true}
@@ -318,7 +326,6 @@ func newWildcardMatcher(pattern string) *wildcardMatcher {
 	return &wildcardMatcher{pattern: pattern, baseDomain: baseDomain, isAll: false, regex: re}
 }
 
-// matches checks whether domain or any parent domain matches the wildcard.
 func (w *wildcardMatcher) matches(domain string) bool {
 	if w == nil {
 		return false
@@ -352,7 +359,6 @@ func (w *wildcardMatcher) matches(domain string) bool {
 	return false
 }
 
-// appRuleBucket holds rule collections specific to a single app package.
 type appRuleBucket struct {
 	allow     map[string]struct{}
 	block     map[string]string
@@ -363,7 +369,6 @@ type appRuleBucket struct {
 	importantWildcards []*wildcardMatcher
 }
 
-// invertedRule represents a global rule that excludes certain apps.
 type invertedRule struct {
 	pattern      string
 	source       string
@@ -372,38 +377,28 @@ type invertedRule struct {
 	wildcard     *wildcardMatcher
 }
 
-// policySnapshot is an immutable snapshot of all DNS rules evaluated locally in Go.
 type policySnapshot struct {
 	filterEnabled bool
 	hasRules      bool
 
-	// Priority 1: App $important rules (in appBuckets[pkg].important)
-
-	// Priority 2: Global $important rules
 	globalImportant          map[string]string
 	globalImportantWildcards []*wildcardMatcher
 	importantInverted        []invertedRule
 	importantBlockTrie       *dtriReader
 
-	// Priority 3: App allow rules (in appBuckets[pkg].allow)
-
-	// Priority 4: Global allow rules
 	globalAllow          map[string]struct{}
 	globalAllowWildcards []*wildcardMatcher
 	allowInverted        []invertedRule
 	importantAllowTrie   *dtriReader
 	allowTrie            *dtriReader
 
-	// Priority 6: Global regular block rules
 	globalBlock          map[string]string
 	globalBlockWildcards []*wildcardMatcher
 	blockInverted        []invertedRule
 	blockTrie            *dtriReader
 
-	// Disabled subscription rules / overrides
 	disabledRules map[string]struct{}
 
-	// Per-app buckets
 	appBuckets map[string]*appRuleBucket
 }
 
@@ -456,11 +451,6 @@ func matchSingleDomainOrSuffix(domain, pattern string) bool {
 	return strings.HasSuffix(domain, "."+pattern)
 }
 
-// evaluate applies the 7-level domain decision matrix locally in Go memory.
-// Returns:
-//   - (true, reason) if blocked
-//   - (false, "__ALLOW__") if explicitly allowed by allow list
-//   - (false, "") if default pass (no matching rule)
 func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason string) {
 	if s == nil || !s.filterEnabled {
 		return false, ""
@@ -472,7 +462,6 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 	}
 	appName = strings.TrimSpace(appName)
 
-	// 1. App 专属 $important 拦截规则
 	if appName != "" && len(s.appBuckets) > 0 {
 		if bucket, ok := s.appBuckets[appName]; ok {
 			if r, hit := matchDomainOrSuffix(domain, bucket.important); hit {
@@ -486,7 +475,6 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 		}
 	}
 
-	// 2. 全局 $important 拦截规则 (含反向排除与订阅 trie)
 	for _, inv := range s.importantInverted {
 		if appName != "" {
 			if _, excluded := inv.excludedApps[appName]; excluded {
@@ -516,7 +504,6 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 		}
 	}
 
-	// 3. App 专属白名单规则 (@@)
 	if appName != "" && len(s.appBuckets) > 0 {
 		if bucket, ok := s.appBuckets[appName]; ok {
 			if matchDomainOrSuffixSet(domain, bucket.allow) {
@@ -530,7 +517,6 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 		}
 	}
 
-	// 4. 全局白名单规则 (@@, 含反向排除与订阅 allowTrie)
 	for _, inv := range s.allowInverted {
 		if appName != "" {
 			if _, excluded := inv.excludedApps[appName]; excluded {
@@ -554,9 +540,7 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 			return false, "__ALLOW__"
 		}
 	}
-	// Important subscription allow rules are indexed separately — once the
-	// index exists they are deliberately kept out of the snapshot's globalAllow
-	// list — and they outrank regular allow rules.
+
 	if s.importantAllowTrie != nil {
 		if hit, _ := s.importantAllowTrie.containsOrParent(domain); hit {
 			return false, "__ALLOW__"
@@ -568,7 +552,6 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 		}
 	}
 
-	// 5. App 专属普通拦截规则 (包含 *$app=pkg 全阻断)
 	if appName != "" && len(s.appBuckets) > 0 {
 		if bucket, ok := s.appBuckets[appName]; ok {
 			if r, hit := matchDomainOrSuffix(domain, bucket.block); hit {
@@ -582,7 +565,6 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 		}
 	}
 
-	// 6. 全局普通拦截规则 (含反向排除与订阅 blockTrie)
 	for _, inv := range s.blockInverted {
 		if appName != "" {
 			if _, excluded := inv.excludedApps[appName]; excluded {
@@ -612,11 +594,9 @@ func (s *policySnapshot) evaluate(domain, appName string) (blocked bool, reason 
 		}
 	}
 
-	// 7. 默认放行
 	return false, ""
 }
 
-// policyEngine coordinates thread-safe rule snapshot updates and local queries.
 type policyEngine struct {
 	snapshot    atomic.Pointer[policySnapshot]
 	initialized atomic.Bool
@@ -625,7 +605,6 @@ type policyEngine struct {
 	currentTries map[string]*dtriReader
 }
 
-// newPolicyEngine creates an empty policy engine.
 func newPolicyEngine() *policyEngine {
 	pe := &policyEngine{
 		currentTries: make(map[string]*dtriReader),
@@ -634,12 +613,10 @@ func newPolicyEngine() *policyEngine {
 	return pe
 }
 
-// isActive returns whether a snapshot has been pushed and initialized by Kotlin.
 func (pe *policyEngine) isActive() bool {
 	return pe != nil && pe.initialized.Load()
 }
 
-// hasRules returns whether any rules or tries are currently active.
 func (pe *policyEngine) hasRules() bool {
 	if pe == nil {
 		return false
@@ -648,7 +625,6 @@ func (pe *policyEngine) hasRules() bool {
 	return snap != nil && snap.hasRules
 }
 
-// evaluate checks domain policy locally in Go memory without lock contention.
 func (pe *policyEngine) evaluate(domain, appName string) (blocked bool, reason string) {
 	if pe == nil {
 		return false, ""
@@ -660,30 +636,27 @@ func (pe *policyEngine) evaluate(domain, appName string) (blocked bool, reason s
 	return snap.evaluate(domain, appName)
 }
 
-// ruleSnapshotJSON defines the schema pushed by Kotlin.
 type ruleSnapshotJSON struct {
-	FilterEnabled          *bool                          `json:"filterEnabled"`
-	BlockTriePath          string                         `json:"blockTriePath"`
-	ImportantBlockTriePath string                         `json:"importantBlockTriePath"`
-	AllowTriePath          string                         `json:"allowTriePath"`
-	ImportantAllowTriePath string                         `json:"importantAllowTriePath"`
-	GlobalAllow            []string                       `json:"globalAllow"`
-	GlobalBlock            []string                       `json:"globalBlock"`
-	GlobalImportant        []string                       `json:"globalImportant"`
-	AppRules               map[string]appRulesConfigJSON  `json:"appRules"`
-	InvertedBlock          []invertedRuleConfigJSON       `json:"invertedBlock"`
-	InvertedAllow          []invertedRuleConfigJSON       `json:"invertedAllow"`
-	DisabledRules          []string                       `json:"disabledRules"`
+	FilterEnabled          *bool                         `json:"filterEnabled"`
+	BlockTriePath          string                        `json:"blockTriePath"`
+	ImportantBlockTriePath string                        `json:"importantBlockTriePath"`
+	AllowTriePath          string                        `json:"allowTriePath"`
+	ImportantAllowTriePath string                        `json:"importantAllowTriePath"`
+	GlobalAllow            []string                      `json:"globalAllow"`
+	GlobalBlock            []string                      `json:"globalBlock"`
+	GlobalImportant        []string                      `json:"globalImportant"`
+	AppRules               map[string]appRulesConfigJSON `json:"appRules"`
+	InvertedBlock          []invertedRuleConfigJSON      `json:"invertedBlock"`
+	InvertedAllow          []invertedRuleConfigJSON      `json:"invertedAllow"`
+	DisabledRules          []string                      `json:"disabledRules"`
 }
 
-// appRulesConfigJSON holds per-app rule lists in the snapshot JSON.
 type appRulesConfigJSON struct {
 	Allow     []string `json:"allow"`
 	Block     []string `json:"block"`
 	Important []string `json:"important"`
 }
 
-// invertedRuleConfigJSON holds app-inverted rules in the snapshot JSON.
 type invertedRuleConfigJSON struct {
 	Pattern      string   `json:"pattern"`
 	Source       string   `json:"source"`
@@ -691,7 +664,6 @@ type invertedRuleConfigJSON struct {
 	ExcludedApps []string `json:"excludedApps"`
 }
 
-// applySnapshot parses the JSON snapshot and updates the active policy snapshot atomically.
 func (pe *policyEngine) applySnapshot(jsonStr string) error {
 	if pe == nil {
 		return fmt.Errorf("policy engine is nil")
@@ -723,7 +695,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		}
 	}
 
-	// 1. Global Important
 	for _, p := range req.GlobalImportant {
 		p = strings.ToLower(strings.TrimSpace(p))
 		if p == "" {
@@ -738,7 +709,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		}
 	}
 
-	// 2. Global Allow
 	for _, p := range req.GlobalAllow {
 		p = strings.ToLower(strings.TrimSpace(p))
 		if p == "" {
@@ -753,7 +723,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		}
 	}
 
-	// 3. Global Block
 	for _, p := range req.GlobalBlock {
 		p = strings.ToLower(strings.TrimSpace(p))
 		if p == "" {
@@ -768,7 +737,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		}
 	}
 
-	// 4. App Rules
 	for pkg, bucketConf := range req.AppRules {
 		pkg = strings.ToLower(strings.TrimSpace(pkg))
 		if pkg == "" {
@@ -825,7 +793,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		snap.appBuckets[pkg] = bucket
 	}
 
-	// 5. Inverted Block
 	for _, inv := range req.InvertedBlock {
 		p := strings.ToLower(strings.TrimSpace(inv.Pattern))
 		if p == "" {
@@ -856,7 +823,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		}
 	}
 
-	// 6. Inverted Allow
 	for _, inv := range req.InvertedAllow {
 		p := strings.ToLower(strings.TrimSpace(inv.Pattern))
 		if p == "" {
@@ -882,7 +848,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		})
 	}
 
-	// 7. Manage Mmap Tries under lock
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
 
@@ -900,7 +865,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		neededPaths[req.ImportantAllowTriePath] = true
 	}
 
-	// Helper to obtain or open a dtriReader
 	getOrOpenTrie := func(path string) *dtriReader {
 		if path == "" {
 			return nil
@@ -914,7 +878,7 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 			if reader.modTime == stat.ModTime().UnixNano() && reader.size == stat.Size() {
 				return reader
 			}
-			// File has changed on disk! Retire old reader safely
+
 			rToClose := reader
 			time.AfterFunc(2*time.Second, func() {
 				rToClose.close()
@@ -951,11 +915,9 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 		snap.blockTrie != nil ||
 		len(snap.appBuckets) > 0
 
-	// Atomically switch active snapshot first so new queries use the updated policy
 	pe.snapshot.Store(snap)
 	pe.initialized.Store(true)
 
-	// Safely retire unused tries with a grace delay so in-flight queries on the old snapshot complete
 	for path, reader := range pe.currentTries {
 		if !neededPaths[path] {
 			rToClose := reader
@@ -969,7 +931,6 @@ func (pe *policyEngine) applySnapshot(jsonStr string) error {
 	return nil
 }
 
-// close closes all open Mmap tries.
 func (pe *policyEngine) close() {
 	if pe == nil {
 		return

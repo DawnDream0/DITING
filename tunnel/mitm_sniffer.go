@@ -1,3 +1,10 @@
+// mitm_sniffer.go peeks at initial flow payloads to identify TLS or plaintext HTTP protocols and extract hostnames.
+//
+// Low-Latency Inspection:
+// - Performs a single conn.Read (up to 2KB) rather than blocking on bufio.Reader.Peek, returning a replay reader.
+// - Parses TLS ClientHello records to extract SNI (Server Name Indication) extensions and ALPN protocols.
+// - Parses HTTP/1.x request lines and Host headers for plaintext HTTP flows.
+
 package tunnel
 
 import (
@@ -9,16 +16,6 @@ import (
 	"time"
 )
 
-// mitm_sniffer.go — peek at the first bytes of a flow, classify it as
-// TLS or HTTP, and extract the SNI / Host header value for MITM
-// routing decisions.
-
-// peekFlow reads the first batch of client data (up to maxBytes) and
-// returns the peeked bytes plus a Reader that replays them followed by
-// the rest of the stream. One conn.Read is issued instead of
-// bufio.Reader.Peek(maxBytes), which blocks until maxBytes arrive or the
-// deadline fires (seconds of latency on a typical 200-600B ClientHello).
-// The caller keeps using conn for writes; only reads come from the Reader.
 func peekFlow(conn net.Conn, maxBytes int, timeout time.Duration) ([]byte, io.Reader, error) {
 	conn.SetReadDeadline(time.Now().Add(timeout))
 	defer conn.SetReadDeadline(time.Time{})
@@ -32,31 +29,23 @@ func peekFlow(conn net.Conn, maxBytes int, timeout time.Duration) ([]byte, io.Re
 	return peeked, io.MultiReader(bytes.NewReader(peeked), conn), nil
 }
 
-// parseClientHelloSNI extracts the server_name extension from a TLS
-// ClientHello record. Returns "" if the bytes aren't a ClientHello or
-// the SNI extension is absent. No allocations on the unhappy path —
-// this runs on every HTTPS connection.
 func parseClientHelloSNI(record []byte) string {
-	// TLS record layer: ContentType(1) Version(2) Length(2) Payload
-	if len(record) < 5 || record[0] != 0x16 { // handshake
+
+	if len(record) < 5 || record[0] != 0x16 {
 		return ""
 	}
 	recLen := int(binary.BigEndian.Uint16(record[3:5]))
 	if recLen > len(record)-5 {
-		recLen = len(record) - 5 // truncated but might still contain SNI
+		recLen = len(record) - 5
 	}
 	body := record[5 : 5+recLen]
 
-	// Handshake header: Type(1) Length(3)
-	if len(body) < 4 || body[0] != 0x01 { // 0x01 = ClientHello
+	if len(body) < 4 || body[0] != 0x01 {
 		return ""
 	}
-	// We ignore the handshake length check — use body slice directly.
+
 	ch := body[4:]
 
-	// ClientHello:
-	//   legacy_version(2) random(32) session_id(<=32 prefixed)
-	//   cipher_suites cm extensions
 	if len(ch) < 2+32+1 {
 		return ""
 	}
@@ -83,7 +72,6 @@ func parseClientHelloSNI(record []byte) string {
 	}
 	ext := ch[p : p+extLen]
 
-	// Scan extensions for server_name (0x0000).
 	for len(ext) >= 4 {
 		extType := binary.BigEndian.Uint16(ext[0:2])
 		extDataLen := int(binary.BigEndian.Uint16(ext[2:4]))
@@ -93,8 +81,7 @@ func parseClientHelloSNI(record []byte) string {
 		extData := ext[4 : 4+extDataLen]
 
 		if extType == 0x0000 {
-			// server_name extension body:
-			//   list_len(2) [ name_type(1) name_len(2) name ]*
+
 			if len(extData) < 5 {
 				return ""
 			}
@@ -104,7 +91,7 @@ func parseClientHelloSNI(record []byte) string {
 			}
 			list := extData[2 : 2+listLen]
 			if len(list) < 3 || list[0] != 0x00 {
-				return "" // not host_name
+				return ""
 			}
 			nameLen := int(binary.BigEndian.Uint16(list[1:3]))
 			if 3+nameLen > len(list) {
@@ -117,14 +104,11 @@ func parseClientHelloSNI(record []byte) string {
 	return ""
 }
 
-// looksLikeHTTPRequest returns true when the first bytes look like an
-// HTTP/1.x request line.
 func looksLikeHTTPRequest(b []byte) bool {
 	if len(b) < 7 {
 		return false
 	}
-	// Cheap heuristic: an alphabetic method token, a space, then '/',
-	// catches every standard verb without enumerating them.
+
 	for i := 0; i < len(b) && i < 16; i++ {
 		if b[i] == ' ' {
 			if i+2 < len(b) && b[i+1] == '/' {
@@ -140,9 +124,6 @@ func looksLikeHTTPRequest(b []byte) bool {
 	return false
 }
 
-// parseHTTPHost extracts the Host header value from a raw HTTP request
-// peek. Case-insensitive header-name match, trims whitespace. Returns
-// "" if not found.
 func parseHTTPHost(b []byte) string {
 	idx := 0
 	for idx < len(b) {
@@ -159,13 +140,10 @@ func parseHTTPHost(b []byte) string {
 		line := b[idx:nl]
 		idx = nl + 2
 
-		// Empty line → end of headers.
 		if len(line) == 0 {
 			return ""
 		}
 
-		// Skip the request line (first line has no colon before SP).
-		// Header lines contain ':'.
 		colon := -1
 		for j := 0; j < len(line); j++ {
 			if line[j] == ':' {
@@ -179,7 +157,7 @@ func parseHTTPHost(b []byte) string {
 		name := line[:colon]
 		if strings.EqualFold(string(name), "Host") {
 			value := strings.TrimSpace(string(line[colon+1:]))
-			// Strip port, if any.
+
 			if i := strings.IndexByte(value, ':'); i >= 0 {
 				value = value[:i]
 			}
@@ -189,9 +167,6 @@ func parseHTTPHost(b []byte) string {
 	return ""
 }
 
-// peekReplayConn wraps a net.Conn so Read yields bytes from the peeked
-// reader first, then falls through to the connection. Write, Close,
-// and deadlines pass through to the underlying conn unchanged.
 type peekReplayConn struct {
 	net.Conn
 	r io.Reader
@@ -201,8 +176,6 @@ func (c *peekReplayConn) Read(b []byte) (int, error) {
 	return c.r.Read(b)
 }
 
-// intToStr converts a positive int to decimal ASCII without strconv
-// allocation overhead in the hot path.
 func intToStr(i int) string {
 	if i == 0 {
 		return "0"

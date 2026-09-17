@@ -1,3 +1,6 @@
+// dns_cache_test.go provides unit tests for the in-memory DNS cache,
+// covering cache hit/miss behavior, TTL expiration, zero-copy ID patching, stale fallback, and single-flight deduplication.
+
 package tunnel
 
 import (
@@ -115,7 +118,6 @@ func TestDNSCacheStaleFallback(t *testing.T) {
 
 	cache.put(rawQuery, rawResp)
 
-	// Artificially expire the entry
 	entry := cache.entries[cacheKey("stale.com", dns.TypeA, dns.ClassINET)]
 	entry.expiresAt = time.Now().Add(-1 * time.Second)
 	entry.staleUntil = time.Now().Add(10 * time.Second)

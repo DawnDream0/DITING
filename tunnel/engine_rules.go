@@ -1,3 +1,11 @@
+// engine_rules.go manages the lifecycle, loading, and evaluation of domain blocklists within Engine.
+//
+// Rule Evaluation Flow:
+// - Fast path: Evaluates local Go PolicyEngine rules without JNI crossing.
+// - Binary Tries: Pre-filters queries via Bloom filters before traversing mmap security and ad tries.
+// - Fallback: Queries Kotlin DomainChecker if local policy rules and tries yield no match.
+// - Thread Safety: Supports atomic reloading of security, ad, and $important tries without locking packet processing.
+
 package tunnel
 
 import (
@@ -5,9 +13,6 @@ import (
 	"strings"
 )
 
-// SetTries loads the native memory-mapped domain tries and bloom filters for
-// fast lookups in Go. It accepts comma-separated absolute paths to the
-// ad/security binary trie files and their corresponding bloom filter files.
 func (e *Engine) SetTries(adTriePathsCsv, secTriePathsCsv, adBloomPathsCsv, secBloomPathsCsv string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -44,7 +49,9 @@ func (e *Engine) SetTries(adTriePathsCsv, secTriePathsCsv, adBloomPathsCsv, secB
 
 	for _, path := range strings.Split(adTriePathsCsv, ",") {
 		path = strings.TrimSpace(path)
-		if path == "" { continue }
+		if path == "" {
+			continue
+		}
 		t, err := LoadMmapTrie(path)
 		if err != nil {
 			logf("Failed to load Ad Trie from %s: %v", path, err)
@@ -58,7 +65,9 @@ func (e *Engine) SetTries(adTriePathsCsv, secTriePathsCsv, adBloomPathsCsv, secB
 
 	for _, path := range strings.Split(secTriePathsCsv, ",") {
 		path = strings.TrimSpace(path)
-		if path == "" { continue }
+		if path == "" {
+			continue
+		}
 		t, err := LoadMmapTrie(path)
 		if err != nil {
 			logf("Failed to load Security Trie from %s: %v", path, err)
@@ -72,7 +81,9 @@ func (e *Engine) SetTries(adTriePathsCsv, secTriePathsCsv, adBloomPathsCsv, secB
 
 	for _, path := range strings.Split(adBloomPathsCsv, ",") {
 		path = strings.TrimSpace(path)
-		if path == "" { continue }
+		if path == "" {
+			continue
+		}
 		bf, err := LoadBloomFilter(path)
 		if err != nil {
 			logf("Failed to load Ad Bloom Filter from %s: %v", path, err)
@@ -84,7 +95,9 @@ func (e *Engine) SetTries(adTriePathsCsv, secTriePathsCsv, adBloomPathsCsv, secB
 
 	for _, path := range strings.Split(secBloomPathsCsv, ",") {
 		path = strings.TrimSpace(path)
-		if path == "" { continue }
+		if path == "" {
+			continue
+		}
 		bf, err := LoadBloomFilter(path)
 		if err != nil {
 			logf("Failed to load Security Bloom Filter from %s: %v", path, err)
@@ -96,18 +109,25 @@ func (e *Engine) SetTries(adTriePathsCsv, secTriePathsCsv, adBloomPathsCsv, secB
 	e.hasNativeRules.Store(len(e.adTries) > 0 || len(e.secTries) > 0)
 }
 
-// SetImportantTries loads important-rule tries. They are checked before any
-// custom allow rule so a $important block cannot be silently downgraded.
 func (e *Engine) SetImportantTries(pathsCsv string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	for _, trie := range e.importantTries { if trie != nil { trie.Close() } }
+	for _, trie := range e.importantTries {
+		if trie != nil {
+			trie.Close()
+		}
+	}
 	e.importantTries = nil
 	for _, path := range strings.Split(pathsCsv, ",") {
 		path = strings.TrimSpace(path)
-		if path == "" { continue }
+		if path == "" {
+			continue
+		}
 		trie, err := LoadMmapTrie(path)
-		if err != nil { logf("Failed to load important Trie from %s: %v", path, err); continue }
+		if err != nil {
+			logf("Failed to load important Trie from %s: %v", path, err)
+			continue
+		}
 		e.importantTries = append(e.importantTries, trie)
 	}
 	e.hasImportantRules.Store(len(e.importantTries) > 0)
@@ -120,7 +140,11 @@ func (e *Engine) hasImportantMatch(domain string) bool {
 	e.mu.Lock()
 	tries := e.importantTries
 	e.mu.Unlock()
-	for _, trie := range tries { if trie != nil && trie.ContainsOrParent(domain) { return true } }
+	for _, trie := range tries {
+		if trie != nil && trie.ContainsOrParent(domain) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -129,7 +153,7 @@ func (e *Engine) checkDomainBlockedAndReason(host string, appName string) (block
 	if host == "" {
 		return false, ""
 	}
-	// 1. Local Go PolicyEngine check (zero JNI, fast path)
+
 	if e.policyEngine != nil && e.policyEngine.isActive() {
 		blocked, res := e.policyEngine.evaluate(host, appName)
 		if blocked {
@@ -141,14 +165,13 @@ func (e *Engine) checkDomainBlockedAndReason(host string, appName string) (block
 			return true, "important"
 		}
 
-		// Custom & Subscription rule check via single-shot CheckDomain.
 		if e.domainChecker != nil {
 			res := e.domainChecker.CheckDomain(host, appName)
 			if res == "__ALLOW__" {
-				return false, "" // explicitly allowed
+				return false, ""
 			}
 			if res != "" {
-				return true, res // explicitly blocked with reason
+				return true, res
 			}
 		}
 	}
@@ -157,7 +180,6 @@ func (e *Engine) checkDomainBlockedAndReason(host string, appName string) (block
 		return false, ""
 	}
 
-	// Security trie (bloom pre-filter → mmap trie).
 	e.mu.Lock()
 	secBlooms := e.secBlooms
 	secTries := e.secTries
@@ -166,7 +188,9 @@ func (e *Engine) checkDomainBlockedAndReason(host string, appName string) (block
 	e.mu.Unlock()
 
 	for i, secTrie := range secTries {
-		if secTrie == nil { continue }
+		if secTrie == nil {
+			continue
+		}
 		var secBloom *BloomFilter
 		if i < len(secBlooms) {
 			secBloom = secBlooms[i]
@@ -178,9 +202,10 @@ func (e *Engine) checkDomainBlockedAndReason(host string, appName string) (block
 		}
 	}
 
-	// Ad trie (bloom pre-filter → mmap trie).
 	for i, adTrie := range adTries {
-		if adTrie == nil { continue }
+		if adTrie == nil {
+			continue
+		}
 		var adBloom *BloomFilter
 		if i < len(adBlooms) {
 			adBloom = adBlooms[i]
@@ -195,9 +220,6 @@ func (e *Engine) checkDomainBlockedAndReason(host string, appName string) (block
 	return false, ""
 }
 
-// IsDomainBlocked satisfies the AdBlockChecker interface used by the MITM
-// proxy. It replicates the same blocking pipeline used for DNS queries:
-// CustomRule(allow override) → SecurityTrie → AdTrie → Kotlin DomainChecker.
 func (e *Engine) IsDomainBlocked(host string) bool {
 	return e.IsDomainBlockedForApp(host, "")
 }

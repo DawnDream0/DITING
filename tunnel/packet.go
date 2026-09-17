@@ -1,3 +1,11 @@
+// packet.go handles raw IP and UDP packet decoding, validation, and DNS response synthesis for TUN traffic.
+//
+// Packet Construction & Checksum Mechanics:
+// - Parsing: Extracts 5-tuple and DNS wire payloads from IPv4 and IPv6 datagrams.
+// - Response Synthesis: Generates blocked (0.0.0.0, ::), NXDOMAIN, REFUSED, SERVFAIL, and CNAME redirect responses.
+// - Checksums: Calculates IPv4 and IPv6 header checksums. Computes mandatory IPv6 UDP pseudo-header checksums,
+//   adhering to RFC 2460 (transmitting 0 checksums as 0xFFFF).
+
 package tunnel
 
 import (
@@ -8,17 +16,15 @@ import (
 	"github.com/miekg/dns"
 )
 
-// ResponseType determines how blocked domains are responded to.
 type ResponseType int
 
 const (
-	ResponseCustomIP ResponseType = iota // 0.0.0.0
-	ResponseNXDomain                     // NXDOMAIN
-	ResponseRefused                      // REFUSED
-	ResponseNoData                       // NOERROR with an empty answer
+	ResponseCustomIP ResponseType = iota
+	ResponseNXDomain
+	ResponseRefused
+	ResponseNoData
 )
 
-// ParseResponseType converts a string to ResponseType.
 func ParseResponseType(s string) ResponseType {
 	switch s {
 	case "NXDOMAIN":
@@ -38,7 +44,6 @@ const (
 	udpHeaderSize  = 8
 )
 
-// DNSQueryInfo holds parsed DNS query information from a raw TUN packet.
 type DNSQueryInfo struct {
 	SourceIP      net.IP
 	DestIP        net.IP
@@ -50,8 +55,6 @@ type DNSQueryInfo struct {
 	IsIPv6        bool
 }
 
-// ParseTUNPacket parses a raw IP packet from the TUN device and extracts DNS query info.
-// Returns nil if the packet is not a valid DNS query.
 func ParseTUNPacket(packet []byte, length int) *DNSQueryInfo {
 	if length < ipv4HeaderSize {
 		return nil
@@ -94,7 +97,6 @@ func parseIPv4Packet(packet []byte, length int) *DNSQueryInfo {
 		return nil
 	}
 
-	// Check protocol (17 = UDP)
 	if packet[9] != 17 {
 		return nil
 	}
@@ -136,7 +138,6 @@ func parseIPv6Packet(packet []byte, length int) *DNSQueryInfo {
 		return nil
 	}
 
-	// Check next header (17 = UDP)
 	if packet[6] != 17 {
 		return nil
 	}
@@ -168,7 +169,6 @@ func parseIPv6Packet(packet []byte, length int) *DNSQueryInfo {
 	}
 }
 
-// BuildBlockedResponse builds a DNS response that returns 0.0.0.0 for a blocked domain.
 func BuildBlockedResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
 	msg.Unpack(queryInfo.RawDNSPayload)
@@ -197,7 +197,6 @@ func BuildBlockedResponse(queryInfo *DNSQueryInfo) []byte {
 	return buildIPUDPPacket(queryInfo, dnsResp)
 }
 
-// BuildNXDomainResponse builds a DNS NXDOMAIN response.
 func BuildNXDomainResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
 	msg.Unpack(queryInfo.RawDNSPayload)
@@ -210,7 +209,6 @@ func BuildNXDomainResponse(queryInfo *DNSQueryInfo) []byte {
 	return buildIPUDPPacket(queryInfo, dnsResp)
 }
 
-// BuildRefusedResponse builds a DNS REFUSED response.
 func BuildRefusedResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
 	msg.Unpack(queryInfo.RawDNSPayload)
@@ -223,7 +221,6 @@ func BuildRefusedResponse(queryInfo *DNSQueryInfo) []byte {
 	return buildIPUDPPacket(queryInfo, dnsResp)
 }
 
-// BuildServfailResponse builds a DNS SERVFAIL response.
 func BuildServfailResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
 	msg.Unpack(queryInfo.RawDNSPayload)
@@ -236,7 +233,6 @@ func BuildServfailResponse(queryInfo *DNSQueryInfo) []byte {
 	return buildIPUDPPacket(queryInfo, dnsResp)
 }
 
-// BuildRedirectResponse builds a DNS response that redirects to a specific IPv4 address.
 func BuildRedirectResponse(queryInfo *DNSQueryInfo, ip net.IP) []byte {
 	var msg dns.Msg
 	msg.Unpack(queryInfo.RawDNSPayload)
@@ -253,20 +249,17 @@ func BuildRedirectResponse(queryInfo *DNSQueryInfo, ip net.IP) []byte {
 				A:   ip.To4(),
 			})
 		}
-		// For AAAA queries when redirecting to IPv4, return empty response
+
 	}
 
 	dnsResp, _ := resp.Pack()
 	return buildIPUDPPacket(queryInfo, dnsResp)
 }
 
-// BuildForwardedResponse wraps a raw DNS response in IP+UDP headers.
 func BuildForwardedResponse(queryInfo *DNSQueryInfo, dnsResp []byte) []byte {
 	return buildIPUDPPacket(queryInfo, dnsResp)
 }
 
-// buildIPUDPPacket wraps a DNS payload in IP+UDP headers for writing back to TUN.
-// Source/dest are SWAPPED (response goes back to the original sender).
 func buildIPUDPPacket(queryInfo *DNSQueryInfo, payload []byte) []byte {
 	if queryInfo.IsIPv6 {
 		return buildIPv6UDPPacket(queryInfo.DestIP, queryInfo.SourceIP, queryInfo.DestPort, queryInfo.SourcePort, payload)
@@ -279,25 +272,21 @@ func buildIPv4UDPPacket(srcIP, dstIP net.IP, srcPort, dstPort uint16, payload []
 	totalLen := ipv4HeaderSize + udpLen
 	packet := make([]byte, totalLen)
 
-	// IPv4 header
-	packet[0] = 0x45 // Version + IHL
+	packet[0] = 0x45
 	binary.BigEndian.PutUint16(packet[2:4], uint16(totalLen))
-	packet[8] = 64  // TTL
-	packet[9] = 17  // Protocol (UDP)
+	packet[8] = 64
+	packet[9] = 17
 	copy(packet[12:16], srcIP.To4())
 	copy(packet[16:20], dstIP.To4())
 
 	csum := calculateChecksum(packet[:ipv4HeaderSize])
 	binary.BigEndian.PutUint16(packet[10:12], csum)
 
-	// UDP header
 	udpOffset := ipv4HeaderSize
 	binary.BigEndian.PutUint16(packet[udpOffset:udpOffset+2], srcPort)
 	binary.BigEndian.PutUint16(packet[udpOffset+2:udpOffset+4], dstPort)
 	binary.BigEndian.PutUint16(packet[udpOffset+4:udpOffset+6], uint16(udpLen))
-	// UDP checksum = 0 (optional for IPv4)
 
-	// Payload
 	copy(packet[udpOffset+udpHeaderSize:], payload)
 
 	return packet
@@ -308,25 +297,21 @@ func buildIPv6UDPPacket(srcIP, dstIP net.IP, srcPort, dstPort uint16, payload []
 	totalLen := ipv6HeaderSize + udpLen
 	packet := make([]byte, totalLen)
 
-	// IPv6 header
-	packet[0] = 0x60                                                    // Version 6
-	binary.BigEndian.PutUint16(packet[4:6], uint16(udpLen))             // Payload length
-	packet[6] = 17                                                      // Next header (UDP)
-	packet[7] = 64                                                      // Hop limit
+	packet[0] = 0x60
+	binary.BigEndian.PutUint16(packet[4:6], uint16(udpLen))
+	packet[6] = 17
+	packet[7] = 64
 	copy(packet[8:24], srcIP.To16())
 	copy(packet[24:40], dstIP.To16())
 
-	// UDP header
 	udpOffset := ipv6HeaderSize
 	binary.BigEndian.PutUint16(packet[udpOffset:udpOffset+2], srcPort)
 	binary.BigEndian.PutUint16(packet[udpOffset+2:udpOffset+4], dstPort)
 	binary.BigEndian.PutUint16(packet[udpOffset+4:udpOffset+6], uint16(udpLen))
 
-	// Calculate UDP checksum (mandatory for IPv6)
 	csum := calculateUDPIPv6Checksum(srcIP.To16(), dstIP.To16(), packet, udpOffset, udpLen)
 	binary.BigEndian.PutUint16(packet[udpOffset+6:udpOffset+8], csum)
 
-	// Payload
 	copy(packet[udpOffset+udpHeaderSize:], payload)
 
 	return packet
@@ -347,23 +332,21 @@ func calculateChecksum(data []byte) uint16 {
 }
 
 func calculateUDPIPv6Checksum(srcIP, dstIP []byte, packet []byte, udpOffset, udpLen int) uint16 {
-	// Pseudo-header for IPv6 UDP checksum
+
 	var sum uint32
 
-	// Source address (16 bytes)
 	for i := 0; i < 16; i += 2 {
 		sum += uint32(srcIP[i])<<8 | uint32(srcIP[i+1])
 	}
-	// Dest address (16 bytes)
+
 	for i := 0; i < 16; i += 2 {
 		sum += uint32(dstIP[i])<<8 | uint32(dstIP[i+1])
 	}
-	// UDP length (4 bytes, big-endian)
+
 	sum += uint32(udpLen)
-	// Next header = 17 (4 bytes, big-endian)
+
 	sum += 17
 
-	// UDP header + data (clear checksum field first)
 	saved := binary.BigEndian.Uint16(packet[udpOffset+6 : udpOffset+8])
 	binary.BigEndian.PutUint16(packet[udpOffset+6:udpOffset+8], 0)
 	for i := udpOffset; i+1 < udpOffset+udpLen; i += 2 {
@@ -379,7 +362,7 @@ func calculateUDPIPv6Checksum(srcIP, dstIP []byte, packet []byte, udpOffset, udp
 	}
 	result := ^uint16(sum)
 	if result == 0 {
-		result = 0xFFFF // RFC 2460: checksum of 0 must be transmitted as 0xFFFF
+		result = 0xFFFF
 	}
 	return result
 }

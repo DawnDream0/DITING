@@ -1,3 +1,9 @@
+// resolver_doh.go implements the DNS-over-HTTPS (DoH, RFC 8484) client.
+//
+// Implementation Details:
+// - Packs wire-format DNS queries into HTTP POST requests with application/dns-message content type.
+// - Uses an HTTP transport bound to protected sockets to prevent recursive routing through the VPN.
+
 package tunnel
 
 import (
@@ -11,7 +17,6 @@ import (
 	"time"
 )
 
-// buildDoHClient creates an HTTP client with protected sockets for DoH.
 func buildDoHClient(outbound flowOutbound, bootstrap *bootstrapResolver) *http.Client {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -37,7 +42,6 @@ func buildDoHClient(outbound flowOutbound, bootstrap *bootstrapResolver) *http.C
 	}
 }
 
-// queryDoH sends a DNS query via DNS-over-HTTPS (RFC 8484 POST).
 func (r *Resolver) queryDoH(rawQuery []byte, dohURL string) ([]byte, error) {
 	return r.queryDoHContext(context.Background(), rawQuery, dohURL)
 }

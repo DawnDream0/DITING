@@ -1,3 +1,11 @@
+// trie.go implements MmapTrie, a memory-mapped, read-only reversed-label domain trie.
+//
+// Data Structure & Matching:
+// - File Magic: 0x54524945 ("TRIE")
+// - Domains are stored with reversed labels (e.g., ads.google.com stored as com -> google -> ads).
+// - ContainsOrParent performs hierarchical prefix and suffix lookups along with recursive
+//   wildcard (*) label matching across domain components.
+
 package tunnel
 
 import (
@@ -10,19 +18,17 @@ import (
 )
 
 const (
-	trieMagic   = 0x54524945 // "TRIE" in hex
+	trieMagic   = 0x54524945
 	trieVersion = 2
 	headerSize  = 16
 )
 
-// MmapTrie represents a read-only memory-mapped DomainTrie.
 type MmapTrie struct {
 	file   *os.File
 	buffer []byte
 	limit  int
 }
 
-// LoadMmapTrie opens a file and memory-maps its contents.
 func LoadMmapTrie(path string) (*MmapTrie, error) {
 	if path == "" {
 		return nil, fmt.Errorf("empty path")
@@ -72,7 +78,6 @@ func LoadMmapTrie(path string) (*MmapTrie, error) {
 	}, nil
 }
 
-// Close unmaps the memory and closes the file.
 func (m *MmapTrie) Close() {
 	if m.buffer != nil {
 		unix.Munmap(m.buffer)
@@ -84,8 +89,6 @@ func (m *MmapTrie) Close() {
 	}
 }
 
-// ContainsOrParent checks if a domain or any of its parent domains exists in the trie.
-// It also checks for wildcard (*) matches from top to bottom.
 func (m *MmapTrie) ContainsOrParent(domain string) bool {
 	if m.buffer == nil {
 		return false
@@ -94,7 +97,6 @@ func (m *MmapTrie) ContainsOrParent(domain string) bool {
 	return m.matchWithWildcard(headerSize, labels, len(labels)-1)
 }
 
-// matchWithWildcard recursively checks exact and wildcard matches.
 func (m *MmapTrie) matchWithWildcard(nodeOffset int, labels []string, index int) bool {
 	if index < 0 {
 		return false
@@ -105,7 +107,6 @@ func (m *MmapTrie) matchWithWildcard(nodeOffset int, labels []string, index int)
 
 	targetLabel := labels[index]
 
-	// 1. Try exact label match
 	exactOffset := m.findChildOffset(nodeOffset, targetLabel)
 	if exactOffset != -1 {
 		if m.isTerminal(exactOffset) {
@@ -116,7 +117,6 @@ func (m *MmapTrie) matchWithWildcard(nodeOffset int, labels []string, index int)
 		}
 	}
 
-	// 2. Try wildcard `*` match
 	wildcardOffset := m.findChildOffset(nodeOffset, "*")
 	if wildcardOffset != -1 {
 		if m.isTerminal(wildcardOffset) {
@@ -145,20 +145,20 @@ func (m *MmapTrie) findChildOffset(nodeOffset int, targetLabel string) int {
 	targetBytes := []byte(targetLabel)
 	targetLen := len(targetBytes)
 
-	pos := nodeOffset + 1 // skip isTerminal byte
+	pos := nodeOffset + 1
 
 	childCount := int(binary.BigEndian.Uint32(m.buffer[pos : pos+4]))
 	pos += 4
 
 	for c := 0; c < childCount; c++ {
 		if pos+2 > m.limit {
-			return -1 // buffer too short
+			return -1
 		}
 		labelLen := int(binary.BigEndian.Uint16(m.buffer[pos : pos+2]))
 		pos += 2
 
 		if pos+labelLen+4 > m.limit {
-			return -1 // corrupted data
+			return -1
 		}
 
 		if labelLen == targetLen {
@@ -172,15 +172,15 @@ func (m *MmapTrie) findChildOffset(nodeOffset int, targetLabel string) int {
 			if match {
 				childOffset := int(binary.BigEndian.Uint32(m.buffer[pos+labelLen : pos+labelLen+4]))
 				if childOffset < headerSize || childOffset >= m.limit {
-					// Invalid offset
+
 					return -1
 				}
 				return childOffset
 			}
 		}
 
-		pos += labelLen + 4 // skip label bytes + child offset
+		pos += labelLen + 4
 	}
 
-	return -1 // label not found
+	return -1
 }

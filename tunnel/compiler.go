@@ -1,3 +1,12 @@
+// compiler.go provides the on-device filter compiler that parses raw blocklists
+// and compiles them into binary .trie and .bloom files compatible with MmapTrie and BloomFilter.
+//
+// Compilation Pipeline:
+// - Rule Formats: Supports AdBlock Plus rules (||domain.com^), /etc/hosts entries (0.0.0.0 domain),
+//   and plain domain lists, while separating exception rules (@@) and $important directives.
+// - Binary Trie Layout: Two-pass breadth-first search (BFS) serialization calculating byte offsets
+//   followed by binary node emission (isTerminal flag, childCount, label lengths, and child offsets).
+
 package tunnel
 
 import (
@@ -13,39 +22,40 @@ import (
 	"golang.org/x/net/idna"
 )
 
-// Local Filter Compiler — builds .trie and .bloom files on-device.
-//
-// Used as fallback for custom filters when the backend API is unreachable.
-// Parses domain lists (hosts, AdBlock, plain) and produces binary files
-// compatible with MmapTrie and BloomFilter readers.
-
-// CompileFilterList downloads a filter list from rawPath (local file path),
-// parses domains, and writes .trie and .bloom files.
-// Returns the number of domains compiled, or an error.
-//
-// This is exported for gomobile and called from Kotlin.
 func CompileFilterList(inputPath, triePath, bloomPath string) (int, error) {
 	normal, important, err := collectFilterDomains(inputPath)
-	if err != nil { return 0, err }
+	if err != nil {
+		return 0, err
+	}
 	if len(important) != 0 {
 		return 0, fmt.Errorf("filter list contains $important rules; use CompileFilterListWithImportant")
 	}
-	if len(normal) == 0 { return 0, fmt.Errorf("no valid domains found in filter list") }
-	if err := writeFilterDomains(normal, triePath, bloomPath); err != nil { return 0, err }
+	if len(normal) == 0 {
+		return 0, fmt.Errorf("no valid domains found in filter list")
+	}
+	if err := writeFilterDomains(normal, triePath, bloomPath); err != nil {
+		return 0, err
+	}
 	return len(normal), nil
 }
 
-// CompileFilterListWithImportant writes separate ordinary and important tries.
-// Important rules must be consulted before ordinary allow/block policy.
 func CompileFilterListWithImportant(inputPath, triePath, bloomPath, importantTriePath, importantBloomPath string) (int, error) {
 	normal, important, err := collectFilterDomains(inputPath)
-	if err != nil { return 0, err }
-	if len(normal) == 0 && len(important) == 0 { return 0, fmt.Errorf("no valid domains found in filter list") }
+	if err != nil {
+		return 0, err
+	}
+	if len(normal) == 0 && len(important) == 0 {
+		return 0, fmt.Errorf("no valid domains found in filter list")
+	}
 	if len(normal) > 0 {
-		if err := writeFilterDomains(normal, triePath, bloomPath); err != nil { return 0, err }
+		if err := writeFilterDomains(normal, triePath, bloomPath); err != nil {
+			return 0, err
+		}
 	}
 	if len(important) > 0 {
-		if err := writeFilterDomains(important, importantTriePath, importantBloomPath); err != nil { return 0, err }
+		if err := writeFilterDomains(important, importantTriePath, importantBloomPath); err != nil {
+			return 0, err
+		}
 	}
 	return len(normal) + len(important), nil
 }
@@ -57,7 +67,6 @@ func collectFilterDomains(inputPath string) (map[string]struct{}, map[string]str
 	}
 	defer f.Close()
 
-	// Collect unique domains streaming, line-by-line
 	domains := make(map[string]struct{})
 	importantDomains := make(map[string]struct{})
 	scanner := bufio.NewScanner(f)
@@ -68,14 +77,20 @@ func collectFilterDomains(inputPath string) (map[string]struct{}, map[string]str
 		if len(fields) >= 2 && isLiteralIP(fields[0]) {
 			if isSinkhole(fields[0]) {
 				for _, host := range fields[1:] {
-					if d, ok := normalizeFilterDomain(host); ok { domains[d] = struct{}{} }
+					if d, ok := normalizeFilterDomain(host); ok {
+						domains[d] = struct{}{}
+					}
 				}
 			}
 			continue
 		}
 		d, important, valid := parseDomainLine(line)
 		if valid {
-			if important { importantDomains[d] = struct{}{} } else { domains[d] = struct{}{} }
+			if important {
+				importantDomains[d] = struct{}{}
+			} else {
+				domains[d] = struct{}{}
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -105,8 +120,6 @@ func writeFilterDomains(domains map[string]struct{}, triePath, bloomPath string)
 	logf("Compiled %d domains → %s + %s", count, triePath, bloomPath)
 	return nil
 }
-
-// Domain Parser — handles hosts, AdBlock Plus, and plain domain formats.
 
 type ParsedRule struct {
 	Pattern     string
@@ -179,12 +192,10 @@ func parseDomainRule(line string) (ParsedRule, bool) {
 	line = strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
 	line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
 
-	// Skip empty lines and comments
 	if line == "" || line[0] == '#' || line[0] == '!' {
 		return ParsedRule{}, false
 	}
 
-	// Skip AdBlock exception rules (@@) for block-compiler
 	if strings.HasPrefix(line, "@@") {
 		return ParsedRule{}, false
 	}
@@ -239,7 +250,7 @@ func parseDomainRule(line string) (ParsedRule, bool) {
 	var domain string
 
 	switch {
-	// AdBlock Plus format: ||domain.com^
+
 	case strings.HasPrefix(line, "||"):
 		domain = strings.TrimPrefix(line, "||")
 		if strings.ContainsAny(domain, "/?") || (strings.Contains(domain, "^") && !strings.HasSuffix(domain, "^")) {
@@ -250,11 +261,9 @@ func parseDomainRule(line string) (ParsedRule, bool) {
 	case strings.HasPrefix(line, "|") || strings.HasSuffix(line, "|"):
 		return ParsedRule{}, false
 
-	// Hosts file format: 0.0.0.0 domain.com or 127.0.0.1 domain.com
 	case len(strings.Fields(line)) >= 2 && isLiteralIP(strings.Fields(line)[0]):
 		return ParsedRule{}, false
 
-	// Plain domain (one per line, must contain a dot, no spaces) or wildcard pattern
 	default:
 		if !strings.ContainsAny(line, " \t$") {
 			domain = strings.TrimSuffix(line, "^")
@@ -288,12 +297,22 @@ func parseDomainRule(line string) (ParsedRule, bool) {
 }
 
 func isLiteralIP(value string) bool { return net.ParseIP(value) != nil || value == "0" }
-func isSinkhole(value string) bool { switch strings.ToLower(value) { case "0", "0.0.0.0", "127.0.0.1", "::", "::1": return true }; return false }
+func isSinkhole(value string) bool {
+	switch strings.ToLower(value) {
+	case "0", "0.0.0.0", "127.0.0.1", "::", "::1":
+		return true
+	}
+	return false
+}
 func normalizeFilterDomain(domain string) (string, bool) {
 	domain = strings.TrimSuffix(strings.TrimSpace(strings.ToLower(domain)), ".")
-	if domain == "" || !strings.Contains(domain, ".") || domain == "localhost" || domain == "localhost.localdomain" || domain == "local" || domain == "broadcasthost" || net.ParseIP(domain) != nil { return "", false }
+	if domain == "" || !strings.Contains(domain, ".") || domain == "localhost" || domain == "localhost.localdomain" || domain == "local" || domain == "broadcasthost" || net.ParseIP(domain) != nil {
+		return "", false
+	}
 	ascii, err := idna.Lookup.ToASCII(domain)
-	if err != nil || !validDomain(ascii) { return "", false }
+	if err != nil || !validDomain(ascii) {
+		return "", false
+	}
 	return strings.ToLower(ascii), true
 }
 func normalizeWildcardFilterDomain(domain string) (string, bool) {
@@ -321,15 +340,21 @@ func normalizeWildcardFilterDomain(domain string) (string, bool) {
 	return domain, true
 }
 func validDomain(domain string) bool {
-	if len(domain) == 0 || len(domain) > 253 || !strings.Contains(domain, ".") { return false }
+	if len(domain) == 0 || len(domain) > 253 || !strings.Contains(domain, ".") {
+		return false
+	}
 	for _, label := range strings.Split(domain, ".") {
-		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' { return false }
-		for _, char := range label { if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '-') { return false } }
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, char := range label {
+			if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '-') {
+				return false
+			}
+		}
 	}
 	return true
 }
-
-// Trie Builder — reversed-label trie with BFS binary serialization.
 
 type trieBuilderNode struct {
 	children   map[string]*trieBuilderNode
@@ -340,8 +365,6 @@ func newTrieBuilderNode() *trieBuilderNode {
 	return &trieBuilderNode{children: make(map[string]*trieBuilderNode)}
 }
 
-// insert adds a domain to the trie with reversed labels.
-// "ads.google.com" → [com][google][ads]
 func (n *trieBuilderNode) insert(domain string) {
 	labels := strings.Split(domain, ".")
 	node := n
@@ -357,7 +380,6 @@ func (n *trieBuilderNode) insert(domain string) {
 	node.isTerminal = true
 }
 
-// saveToFile serializes the trie to the binary format compatible with MmapTrie.
 func (n *trieBuilderNode) saveToFile(path string) error {
 	type bfsEntry struct {
 		node   *trieBuilderNode
@@ -378,7 +400,6 @@ func (n *trieBuilderNode) saveToFile(path string) error {
 	}
 	countNodes(n)
 
-	// BFS pass 1: calculate byte offsets
 	queue := []bfsEntry{{node: n, offset: headerSize}}
 	currentOffset := headerSize
 	offsets := make(map[*trieBuilderNode]int)
@@ -389,11 +410,10 @@ func (n *trieBuilderNode) saveToFile(path string) error {
 
 		offsets[entry.node] = currentOffset
 
-		// Node size: isTerminal(1) + childCount(4) + children
 		nodeSize := 1 + 4
 		sortedLabels := sortedKeys(entry.node.children)
 		for _, label := range sortedLabels {
-			nodeSize += 2 + len(label) + 4 // labelLen(2) + label(N) + childOffset(4)
+			nodeSize += 2 + len(label) + 4
 		}
 		currentOffset += nodeSize
 
@@ -403,7 +423,6 @@ func (n *trieBuilderNode) saveToFile(path string) error {
 		}
 	}
 
-	// BFS pass 2: write binary data
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("create trie file: %w", err)
@@ -424,20 +443,17 @@ func (n *trieBuilderNode) saveToFile(path string) error {
 		node := queue2[0]
 		queue2 = queue2[1:]
 
-		// isTerminal (1 byte)
 		if node.isTerminal {
 			f.Write([]byte{1})
 		} else {
 			f.Write([]byte{0})
 		}
 
-		// childCount (4 bytes)
 		sortedLabels := sortedKeys(node.children)
 		countBuf := make([]byte, 4)
 		binary.BigEndian.PutUint32(countBuf, uint32(len(sortedLabels)))
 		f.Write(countBuf)
 
-		// Children: labelLen(2) + label(N) + childOffset(4)
 		for _, label := range sortedLabels {
 			child := node.children[label]
 

@@ -1,3 +1,6 @@
+// resolver_stats.go tracks performance metrics and health statistics for configured upstream DNS providers,
+// recording latency measurements, error rates, and query success counters.
+
 package tunnel
 
 import (
@@ -5,7 +8,6 @@ import (
 	"time"
 )
 
-// providerStats tracks dynamic latency metrics and health for smart prediction.
 type providerStats struct {
 	mu           sync.RWMutex
 	ewmaRTT      time.Duration

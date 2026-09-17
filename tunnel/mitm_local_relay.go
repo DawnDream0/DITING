@@ -1,3 +1,9 @@
+// mitm_local_relay.go provides in-memory responders for local asset hosts and CNAME rewrite targets.
+//
+// Zero-Network Servicing:
+// - Intercepts requests for local.pwhs.app and completes dynamic TLS handshakes locally, serving in-memory assets
+//   (cosmetic stylesheets) without initiating external network dials.
+
 package tunnel
 
 import (
@@ -9,13 +15,6 @@ import (
 	"strings"
 )
 
-// mitm_local_relay.go — responders for flows whose SNI / Host matches
-// the local asset host (local.pwhs.app) or a CNAME rewrite target,
-// served entirely from memory without any upstream dial.
-
-// serveLocalAssetTLS completes a TLS handshake (dynamic cert) for a
-// connection whose SNI matches the local asset host, then serves
-// in-memory assets without any upstream dial.
 func serveLocalAssetTLS(conn net.Conn, clientReader io.Reader, certMgr *CertManager, hostname string) {
 	tlsCfg := certMgr.GetDynamicTLSConfigForHost(hostname)
 	clientTLS := tls.Server(&peekReplayConn{Conn: conn, r: clientReader}, tlsCfg)
@@ -40,9 +39,6 @@ func serveLocalAssetTLS(conn net.Conn, clientReader io.Reader, certMgr *CertMana
 	}
 }
 
-// serveLocalAssetPlaintext answers an HTTP (no TLS) request targeting
-// the local asset host. Kept for symmetry; normally the local asset
-// host is only accessed via HTTPS links.
 func serveLocalAssetPlaintext(conn net.Conn, clientReader io.Reader) {
 	rb := bufio.NewReader(clientReader)
 	for {
@@ -59,8 +55,6 @@ func serveLocalAssetPlaintext(conn net.Conn, clientReader io.Reader) {
 		}
 	}
 }
-
-// CNAME rewrite redirect helpers.
 
 func serveRewriteRedirectTLS(conn net.Conn, clientReader io.Reader, certMgr *CertManager, hostname, target string, engine *Engine, flow flowID) {
 	tlsCfg := certMgr.GetDynamicTLSConfigForHost(hostname)

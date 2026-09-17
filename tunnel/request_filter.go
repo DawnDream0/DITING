@@ -1,3 +1,9 @@
+// request_filter.go provides HTTP request-level path and URL-prefix filtering.
+//
+// Rule Resolution:
+// - Request rules take precedence over general domain rules.
+// - Evaluation uses longest-prefix matching with allow rules winning ties before falling back to domain filtering.
+
 package tunnel
 
 import (
@@ -13,8 +19,6 @@ type requestRule struct {
 	Kind    string `json:"kind"`
 }
 
-// SetRequestRules replaces the Go-tunnel HTTP URL-prefix rules. Rules are
-// normalized on Android; this boundary validates only their transport shape.
 func (e *Engine) SetRequestRules(content string) {
 	var rules []requestRule
 	if content != "" {
@@ -36,8 +40,6 @@ func (e *Engine) SetRequestRules(content string) {
 	e.mu.Unlock()
 }
 
-// requestFilterDecision evaluates URL rules first. The longest matching URL
-// wins, with an allow winning ties, then the existing domain policy applies.
 func (e *Engine) requestFilterDecision(scheme, host, path, appName string) (blocked bool, matched string) {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if parsedHost, port, err := net.SplitHostPort(host); err == nil {
@@ -45,7 +47,9 @@ func (e *Engine) requestFilterDecision(scheme, host, path, appName string) (bloc
 			host = parsedHost
 		}
 	}
-	if path == "" { path = "/" }
+	if path == "" {
+		path = "/"
+	}
 	url := strings.ToLower(scheme + "://" + host + path)
 	e.mu.Lock()
 	rules := append([]requestRule(nil), e.requestRules...)
@@ -66,7 +70,9 @@ func (e *Engine) requestFilterDecision(scheme, host, path, appName string) (bloc
 		return !bestAllow, bestPattern
 	}
 	domainHost := host
-	if parsedHost, _, err := net.SplitHostPort(host); err == nil { domainHost = parsedHost }
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		domainHost = parsedHost
+	}
 	if blocked, reason := e.checkDomainBlockedAndReason(domainHost, appName); blocked {
 		return true, reason
 	}
@@ -78,9 +84,9 @@ func writeBlockedHTTPResponse(client net.Conn, req *http.Request) {
 		StatusCode: http.StatusForbidden,
 		ProtoMajor: 1,
 		ProtoMinor: 1,
-		Header: make(http.Header),
-		Body: io.NopCloser(strings.NewReader("Blocked by DNSSR")),
-		Request: req,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("Blocked by DNSSR")),
+		Request:    req,
 	}
 	resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	resp.Header.Set("Content-Length", "16")

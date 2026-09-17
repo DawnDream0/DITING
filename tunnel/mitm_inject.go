@@ -1,3 +1,10 @@
+// mitm_inject.go provides streaming HTML rewriting for cosmetic ad-blocking CSS injection.
+//
+// Injection Architecture:
+// - Scans the uncompressed response stream for <head> tags (case-insensitive) using a sliding buffer.
+// - Injects a lightweight <link rel="stylesheet"> pointing to the in-memory asset host (local.pwhs.app),
+//   avoiding inline injection of 50-100KB CSS payloads and enabling client browser caching.
+
 package tunnel
 
 import (
@@ -7,34 +14,17 @@ import (
 	"sync"
 )
 
-// MITM HTML injector — streaming modification of HTML responses. Scans
-// for <head> (case-insensitive) in the response stream and injects a
-// lightweight <link> tag pointing to the local asset server
-// (local.pwhs.app) instead of ~50-100KB of raw CSS/JS inline. The CSS
-// is served from memory — see mitm_local_server.go.
-
-// injectionTags is the lightweight tag injected after <head>.
-// The browser fetches it via HTTPS through the MITM proxy, which
-// intercepts "local.pwhs.app" and serves assets from memory.
 const injectionTags = `<link rel="stylesheet" href="https://local.pwhs.app/cosmetic.css">`
 
-// headTagBytes is the pattern to search for (case-insensitive matching done manually).
-var headTagBytes = []byte("<head") // matches both <head> and <head ...attributes>
+var headTagBytes = []byte("<head")
 
-// scanLimit is the maximum number of bytes to scan for <head>.
-// If <head> isn't found within this limit, it's likely not a standard HTML page.
-const scanLimit = 16 * 1024 // 16KB
+const scanLimit = 16 * 1024
 
-// cosmeticCSS holds the cosmetic filter CSS rules (thread-safe).
-// Read by mitm_local_server.go when serving /cosmetic.css.
 var (
 	cosmeticMu  sync.RWMutex
 	cosmeticCSS string
 )
 
-// SetCosmeticCSS sets the cosmetic filter CSS that will be served by the
-// local asset server at https://local.pwhs.app/cosmetic.css.
-// Called from Kotlin after parsing EasyList cosmetic rules.
 func SetCosmeticCSS(css string) {
 	cosmeticMu.Lock()
 	cosmeticCSS = css
@@ -42,29 +32,19 @@ func SetCosmeticCSS(css string) {
 	logf("Cosmetic CSS updated: %d bytes", len(css))
 }
 
-// ShouldInjectHTML checks if a Content-Type header indicates HTML content.
 func ShouldInjectHTML(contentType string) bool {
 	ct := strings.ToLower(contentType)
 	return strings.Contains(ct, "text/html")
 }
 
-// injectingReader wraps an io.Reader and injects lightweight asset tags
-// after the first <head> or <head ...> tag found in the stream.
-//
-// It handles edge cases:
-//   - <head> split across read boundaries (carry buffer)
-//   - Scan limit to avoid scanning large non-HTML bodies
-//   - Case-insensitive matching
 type injectingReader struct {
-	upstream    io.Reader
-	injected    bool   // true after injection is done (or scan limit reached)
-	pending     []byte // buffered data waiting to be read by the caller
-	carry       []byte // bytes carried from end of previous read (potential partial <head match)
-	scannedBytes int   // total bytes scanned so far
+	upstream     io.Reader
+	injected     bool
+	pending      []byte
+	carry        []byte
+	scannedBytes int
 }
 
-// NewInjectingReader wraps an upstream reader to inject the local asset server
-// tags after the first <head> tag.
 func NewInjectingReader(upstream io.Reader) io.Reader {
 	return &injectingReader{
 		upstream: upstream,
@@ -107,14 +87,11 @@ func (r *injectingReader) Read(p []byte) (int, error) {
 		return nn, err
 	}
 
-	// Search for <head in the data (case-insensitive)
 	lower := bytes.ToLower(data)
 	idx := bytes.Index(lower, headTagBytes)
 
 	if idx < 0 {
-		// No match: the end of data may hold a partial match (e.g. "<he"
-		// could be the start of "<head>"), so carry up to
-		// len(headTagBytes)-1 trailing bytes over to the next read.
+
 		carryLen := len(headTagBytes) - 1
 		if carryLen > len(data) {
 			carryLen = len(data)
@@ -128,7 +105,7 @@ func (r *injectingReader) Read(p []byte) (int, error) {
 				hasPartial = true
 				outData := data[:len(data)-i]
 				if len(outData) == 0 {
-					// All data is potential carry — need more from upstream
+
 					return 0, err
 				}
 				nn := copy(p, outData)
@@ -151,14 +128,14 @@ func (r *injectingReader) Read(p []byte) (int, error) {
 			}
 			return nn, err
 		}
-		// unreachable, but just in case
+
 		nn := copy(p, data)
 		return nn, err
 	}
 
 	closeIdx := bytes.IndexByte(lower[idx:], '>')
 	if closeIdx < 0 {
-		// The '>' hasn't arrived yet — carry everything from idx onward
+
 		r.carry = make([]byte, len(data)-idx)
 		copy(r.carry, data[idx:])
 		outData := data[:idx]
@@ -179,13 +156,11 @@ func (r *injectingReader) Read(p []byte) (int, error) {
 	return r.doInject(p, data, tagEnd, err)
 }
 
-// doInject splices the lightweight asset tags into the data buffer right at tagEnd.
 func (r *injectingReader) doInject(p []byte, data []byte, tagEnd int, upstreamErr error) (int, error) {
 	r.injected = true
 
 	script := []byte(injectionTags)
 
-	// Build: [before + tag] + [injected tags] + [rest of data]
 	before := data[:tagEnd]
 	after := data[tagEnd:]
 
@@ -206,7 +181,6 @@ func (r *injectingReader) doInject(p []byte, data []byte, tagEnd int, upstreamEr
 	n := copy(p, combined)
 	r.pending = combined[n:]
 
-	// Don't propagate EOF yet if we have pending data
 	if upstreamErr == io.EOF && len(r.pending) > 0 {
 		return n, nil
 	}

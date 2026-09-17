@@ -1,3 +1,11 @@
+// resolver.go manages upstream DNS resolution across Plain, DoH, DoT, and DoQ protocols.
+//
+// Key Responsibilities:
+// - Protocol Routing: Forwards queries using configured transport protocols with automatic fallback.
+// - Connection Pooling: Maintains reusable HTTP/2 clients for DoH, TLS connection pools for DoT,
+//   and persistent QUIC sessions for DoQ.
+// - Direct Fallback: ResolveARecord provides direct protected UDP resolution used by HTTPS passthrough handlers.
+
 package tunnel
 
 import (
@@ -14,7 +22,6 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-// DNSProtocol represents the DNS transport protocol.
 type DNSProtocol int
 
 const (
@@ -24,7 +31,6 @@ const (
 	ProtocolDoQ
 )
 
-// ParseProtocol converts a string to DNSProtocol.
 func ParseProtocol(s string) DNSProtocol {
 	switch strings.ToUpper(s) {
 	case "DOH":
@@ -46,7 +52,6 @@ const (
 	connectTimeout    = 3 * time.Second
 )
 
-// Resolver handles DNS query forwarding across multiple protocols.
 type Resolver struct {
 	mu sync.RWMutex
 
@@ -57,14 +62,12 @@ type Resolver struct {
 	protectSocketFn func(fd int) bool
 	outbound        flowOutbound
 
-	// HTTP client for DoH (reusable)
 	httpClient *http.Client
-	// QUIC connection for DoQ (reusable)
+
 	quicConn   quic.Connection
 	quicMu     sync.Mutex
 	quicServer string
 
-	// DoT connection pool (reusable)
 	dotMu    sync.Mutex
 	dotConns map[string][]*dotConnEntry
 
@@ -72,14 +75,13 @@ type Resolver struct {
 
 	bootstrap *bootstrapResolver
 
-	providerSnapshot *resolverSnapshot
-	statsMapMu       sync.Mutex
-	providerStatsMap map[string]*providerStats
-	raceLogCallback  RaceLogCallback
+	providerSnapshot  *resolverSnapshot
+	statsMapMu        sync.Mutex
+	providerStatsMap  map[string]*providerStats
+	raceLogCallback   RaceLogCallback
 	bootstrapCallback BootstrapLogCallback
 }
 
-// NewResolver creates a new DNS resolver.
 func NewResolver(protectFn func(fd int) bool) *Resolver {
 	outbound := newFlowOutbound(outboundProxyConfig{}, protectFn, nil)
 	bs := newBootstrapResolver(protectFn)
@@ -93,14 +95,12 @@ func NewResolver(protectFn func(fd int) bool) *Resolver {
 	}
 }
 
-// SetRaceLogCallback sets the callback for DNS race results.
 func (r *Resolver) SetRaceLogCallback(cb RaceLogCallback) {
 	r.mu.Lock()
 	r.raceLogCallback = cb
 	r.mu.Unlock()
 }
 
-// SetBootstrapLogCallback sets the callback for Bootstrap DNS results.
 func (r *Resolver) SetBootstrapLogCallback(cb BootstrapLogCallback) {
 	r.mu.Lock()
 	r.bootstrapCallback = cb
@@ -120,7 +120,6 @@ func (r *Resolver) SetBootstrapLogCallback(cb BootstrapLogCallback) {
 	}
 }
 
-// UpdateBootstrap updates the bootstrap resolver configuration.
 func (r *Resolver) UpdateBootstrap(cfg bootstrapConfig) {
 	r.mu.Lock()
 	if r.bootstrap == nil {
@@ -143,7 +142,6 @@ func (r *Resolver) UpdateBootstrap(cfg bootstrapConfig) {
 	}
 }
 
-// ResetBootstrapStats clears health statistics and host cache in bootstrap resolver.
 func (r *Resolver) ResetBootstrapStats() {
 	r.mu.Lock()
 	if r.bootstrap != nil {
@@ -223,7 +221,6 @@ func (r *Resolver) setOutbound(outbound flowOutbound) {
 	}
 }
 
-// Configure updates the resolver's DNS settings.
 func (r *Resolver) Configure(protocol DNSProtocol, primary, fallback, dohURL string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -233,7 +230,6 @@ func (r *Resolver) Configure(protocol DNSProtocol, primary, fallback, dohURL str
 	r.fallbackServer = fallback
 	r.dohURL = dohURL
 
-	// Reset DoQ connection if server changed
 	r.quicMu.Lock()
 	if r.quicConn != nil && r.quicServer != dohURL {
 		r.quicConn.CloseWithError(quic.ApplicationErrorCode(0), "config change")
@@ -242,7 +238,6 @@ func (r *Resolver) Configure(protocol DNSProtocol, primary, fallback, dohURL str
 	r.quicMu.Unlock()
 }
 
-// ConfigureProviders swaps the complete provider set used by multi-strategy mode.
 func (r *Resolver) ConfigureProviders(mode string, configs []dnsProviderConfig) error {
 	r.statsMapMu.Lock()
 	if r.providerStatsMap == nil {
@@ -297,7 +292,6 @@ func (r *Resolver) ConfigureProviders(mode string, configs []dnsProviderConfig) 
 	return nil
 }
 
-// Resolve forwards a DNS query and returns the response.
 func (r *Resolver) Resolve(rawQuery []byte) ([]byte, error) {
 	r.mu.RLock()
 	snapshot := r.providerSnapshot
@@ -317,7 +311,6 @@ func (r *Resolver) Resolve(rawQuery []byte) ([]byte, error) {
 		return resp, nil
 	}
 
-	// Try fallback with PLAIN protocol if configured and different
 	if fallback != "" && fallback != primary {
 		resp, err2 := r.query(rawQuery, ProtocolPlain, fallback, "")
 		if err2 == nil {
@@ -329,7 +322,6 @@ func (r *Resolver) Resolve(rawQuery []byte) ([]byte, error) {
 	return nil, err
 }
 
-// query performs a DNS query using the specified protocol with a background context.
 func (r *Resolver) query(rawQuery []byte, protocol DNSProtocol, server, dohURL string) ([]byte, error) {
 	return r.queryWithContext(context.Background(), rawQuery, protocol, server, dohURL)
 }
@@ -347,8 +339,6 @@ func (r *Resolver) queryWithContext(ctx context.Context, rawQuery []byte, protoc
 	}
 }
 
-// ResolveARecord resolves a domain's A record via a protected plain DNS query.
-// Used as the direct fallback for HTTPS passthrough host resolution.
 func (r *Resolver) ResolveARecord(domain, dnsServer string) (net.IP, error) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
@@ -378,7 +368,6 @@ func (r *Resolver) ResolveARecord(domain, dnsServer string) (net.IP, error) {
 	return nil, fmt.Errorf("no A record for %s", domain)
 }
 
-// Shutdown cleans up resolver resources.
 func (r *Resolver) Shutdown() {
 	if !r.closed.CompareAndSwap(false, true) {
 		return

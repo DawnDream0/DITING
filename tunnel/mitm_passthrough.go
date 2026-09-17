@@ -1,3 +1,11 @@
+// mitm_passthrough.go handles protected upstream dialing and bidirectional traffic relay for bypassed connections.
+//
+// Dual-Stack Failover:
+// - Directly dials destination endpoints using socket protection.
+// - Automatically falls back to IPv4 resolution if an IPv6 connection fails, preventing Android ERR_CONNECTION_REFUSED
+//   on networks lacking IPv6 routes.
+// - Performs zero-allocation bidirectional streaming between client and server sockets.
+
 package tunnel
 
 import (
@@ -11,18 +19,6 @@ func isTLSClientPort(port int) bool {
 	return port == 443 || port == 465 || port == 993 || port == 8443
 }
 
-// mitm_passthrough.go — upstream dial (with IPv6→IPv4 fallback) and
-// bidirectional relay used when the MITM handler decides NOT to
-// intercept a flow: private IPs, non-HTTP ports, non-allowed UIDs, or
-// sensitive/pinned domains.
-
-// dialUpstream dials the flow's destination with socket protection,
-// falling back to an IPv4 resolution of hostname when the direct-IP
-// dial fails: Chrome resolves dual-stack hosts to IPv6, but the Go
-// process's underlying network often has no v6 route, so without the
-// fallback the client sees ERR_CONNECTION_REFUSED. hostname may be ""
-// (gates that trigger before SNI is known); only the direct dial is
-// attempted then.
 func dialUpstream(flow flowID, hostname string, blocker adBlockChecker, protectFn func(fd int) bool) (net.Conn, error) {
 	outbound := flowOutbound(newFlowOutbound(outboundProxyConfig{}, protectFn, nil))
 	if engine, ok := blocker.(*Engine); ok && engine.flowOutbound != nil {
@@ -62,15 +58,8 @@ func dialUpstream(flow flowID, hostname string, blocker adBlockChecker, protectF
 	return nil, err
 }
 
-// relayDirectFromFlow dials the flow's real destination and pipes bytes
-// bidirectionally (no peek replay — used by gates that trigger before
-// any read). No absolute SetDeadline: gVisor-side TCP keepalive (60s
-// idle, 30s interval, 9 probes) kills genuinely stuck connections, while
-// long-lived flows live as long as apps need — a former 3-minute hard
-// deadline killed YouTube playback mid-stream as ERR_CONNECTION_ABORTED.
 func relayDirectFromFlow(clientConn net.Conn, flow flowID, blocker adBlockChecker, protectFn func(fd int) bool) {
-	// If destination is IPv6 and a TLS client port (HTTPS, SMTPS, IMAPS), peek TLS ClientHello to extract SNI.
-	// This enables dialUpstream to fall back to IPv4 if the direct IPv6 dial fails (e.g. on pure IPv4 network).
+
 	if flow.serverIP.To4() == nil && isTLSClientPort(flow.serverPort) {
 		peeked, peekedReader, err := peekFlow(clientConn, peekSize, peekTimeout)
 		if err == nil && len(peeked) > 0 {
@@ -92,11 +81,6 @@ func relayDirectFromFlow(clientConn net.Conn, flow flowID, blocker adBlockChecke
 	bidiCopyFlow(clientConn, remote)
 }
 
-// relayDirectPeeked dials the destination and writes the peeked bytes
-// to it first, then pipes bidirectionally. Used after peek+classify
-// when the classifier decides not to MITM. hostname is the SNI / Host
-// (may be "") and enables IPv6→IPv4 fallback when the direct-IP dial
-// fails.
 func relayDirectPeeked(clientConn net.Conn, clientReader io.Reader, flow flowID, hostname string, blocker adBlockChecker, protectFn func(fd int) bool) {
 	remote, err := dialUpstream(flow, hostname, blocker, protectFn)
 	if err != nil {

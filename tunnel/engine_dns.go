@@ -1,3 +1,13 @@
+// engine_dns.go handles the complete lifecycle of DNS packets intercepted from the TUN interface.
+//
+// Interception Pipeline:
+// 1. Local Assets: Synthesizes loopback answers for internal cosmetic CSS and documentation hosts.
+// 2. DDR Mitigation: Returns NXDOMAIN for _dns.resolver.arpa (RFC 9462) to prevent client DoH/DoQ bypass.
+// 3. Firewall: Evaluates per-app network blocking rules via Kotlin callbacks.
+// 4. Policy & Trie Matching: Evaluates PolicyEngine fast-path rules and mmap bloom/trie structures.
+// 5. Cache & Upstream: Checks in-memory cache before forwarding queries to upstream resolvers.
+// 6. Upstream Ad Detection: Flags upstream ad-block sinkhole responses (0.0.0.0 / ::) for telemetry attribution.
+
 package tunnel
 
 import (
@@ -8,10 +18,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-// handleDNSQuery processes a single DNS query.
 func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
-	// Early exit: if engine was stopped while this goroutine was queued,
-	// don't touch any shared state — the resources may already be freed.
+
 	e.mu.Lock()
 	running := e.running
 	e.mu.Unlock()
@@ -22,10 +30,6 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 	startTime := time.Now()
 	domain := strings.ToLower(queryInfo.Domain)
 
-	// Local asset host: synthesize a response with a routable IP from the
-	// RFC 5737 documentation range so the browser can SYN to it and have
-	// the packet enter our TUN; the userspace stack catches the flow and
-	// serves cosmetic.css from memory based on SNI.
 	if domain == LocalAssetHost {
 		response := BuildRedirectResponse(queryInfo, localAssetSynthIP)
 		e.writeToTUN(response)
@@ -33,7 +37,6 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 		return
 	}
 
-	// Fetch App Name for logging (and firewall)
 	appName := ""
 	if e.appResolver != nil {
 		appName = e.appResolver.ResolveApp(
@@ -55,8 +58,6 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 		}
 	}
 
-	// Apply literal-IP hosts rewrites in the userspace DNS path used by HTTPS
-	// inspection. This path does not go through the standalone resolver.
 	if target := e.rewriteTarget(domain); target != "" {
 		if ip := net.ParseIP(target); ip != nil && (queryInfo.QueryType == dns.TypeA || queryInfo.QueryType == dns.TypeAAAA) {
 			if (queryInfo.QueryType == dns.TypeA && ip.To4() != nil) || (queryInfo.QueryType == dns.TypeAAAA && ip.To4() == nil) {
@@ -69,15 +70,11 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 		}
 	}
 
-	// Discovery of Designated Resolvers (DDR, RFC 9462):
-	// Return NXDOMAIN for _dns.resolver.arpa queries to prevent clients
-	// from opportunistically upgrading to encrypted DoH/DoQ endpoints.
 	if domain == "_dns.resolver.arpa" || strings.HasSuffix(domain, "._dns.resolver.arpa") {
 		e.handleBlockedDomain(queryInfo, "ddr_blocked", appName, startTime)
 		return
 	}
 
-	// Firewall check (per-app blocking via Kotlin callback)
 	if e.firewallChecker != nil && appName != "" {
 		if e.firewallChecker.ShouldBlock(appName) {
 			e.handleFirewallBlock(queryInfo, appName, startTime)
@@ -85,16 +82,11 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 		}
 	}
 
-	// Engine-level capability switch: when disabled, DNS queries skip all
-	// domain-rule evaluation and go straight to forwarding. The Kotlin side
-	// keeps DNS filtering enabled at all times, including while HTTPS
-	// inspection is active.
 	if !e.filterDNS.Load() {
 		e.handleForward(queryInfo, appName, startTime)
 		return
 	}
 
-	// 1. Local Go PolicyEngine check (zero JNI, fast path)
 	if e.policyEngine != nil && e.policyEngine.isActive() && e.policyEngine.hasRules() {
 		blocked, reason := e.policyEngine.evaluate(domain, appName)
 		if blocked {
@@ -105,20 +97,18 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 			e.handleForward(queryInfo, appName, startTime)
 			return
 		}
-		// PolicyEngine evaluated domain as not blocked: fall through to cache check & forward (0 JNI).
+
 	} else {
-		// Fallback to legacy checks if policyEngine has no rules
+
 		if e.hasImportantMatch(domain) {
 			e.handleBlockedDomain(queryInfo, "important", appName, startTime)
 			return
 		}
 
-		// Custom & Subscription rules override: single-shot JNI check.
-		// "__ALLOW__" = explicitly allowed, non-empty = blocked with reason.
 		if e.domainChecker != nil {
 			checkRes := e.domainChecker.CheckDomain(domain, appName)
 			if checkRes == "__ALLOW__" {
-				// Explicitly allowed by user or whitelist, skip trie checks
+
 				e.handleForward(queryInfo, appName, startTime)
 				return
 			} else if checkRes != "" {
@@ -129,11 +119,7 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 	}
 
 	if e.hasNativeRules.Load() {
-		// Fast native Go domain blocking: Step 1 Bloom filter (O(1)) — if it says
-		// "definitely not blocked", skip the trie entirely; Step 2 Mmap trie
-		// (O(L)) confirms. Eliminates trie traversal for ~90%+ of clean queries.
 
-		// Snapshot tries under lock to avoid use-after-free when Stop() closes them.
 		e.mu.Lock()
 		secBlooms := e.secBlooms
 		secTries := e.secTries
@@ -143,12 +129,12 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 		adTrieIDs := e.adTrieIDs
 		e.mu.Unlock()
 
-		// Collect ALL matching filter IDs so every filter gets attribution in statistics
 		var matchedIDs []string
 
-		// Security domains
 		for i, secTrie := range secTries {
-			if secTrie == nil { continue }
+			if secTrie == nil {
+				continue
+			}
 			var secBloom *BloomFilter
 			if i < len(secBlooms) {
 				secBloom = secBlooms[i]
@@ -164,9 +150,10 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 			}
 		}
 
-		// Ad domains
 		for i, adTrie := range adTries {
-			if adTrie == nil { continue }
+			if adTrie == nil {
+				continue
+			}
 			var adBloom *BloomFilter
 			if i < len(adBlooms) {
 				adBloom = adBlooms[i]
@@ -188,7 +175,6 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 		}
 	}
 
-	// Cache Check (Fast path)
 	if e.dnsCache != nil && e.dnsCache.isEnabled() {
 		if cachedResp, hit, _ := e.dnsCache.get(queryInfo.RawDNSPayload); hit {
 			response := BuildForwardedResponse(queryInfo, cachedResp)
@@ -221,7 +207,6 @@ func buildRewriteIPResponse(queryInfo *DNSQueryInfo, ip net.IP) []byte {
 	return buildIPUDPPacket(queryInfo, packed)
 }
 
-// handleFirewallBlock handles a DNS query blocked by the per-app firewall.
 func (e *Engine) handleFirewallBlock(queryInfo *DNSQueryInfo, appName string, startTime time.Time) {
 	var response []byte
 	switch e.responseType {
@@ -242,7 +227,6 @@ func (e *Engine) handleFirewallBlock(queryInfo *DNSQueryInfo, appName string, st
 	e.notifyLog(queryInfo.Domain, true, queryInfo.QueryType, elapsed, appName, "", "firewall", "", false)
 }
 
-// handleBlockedDomain handles a blocked domain.
 func (e *Engine) handleBlockedDomain(queryInfo *DNSQueryInfo, blockedBy, appName string, startTime time.Time) {
 	var response []byte
 	switch e.responseType {
@@ -263,15 +247,14 @@ func (e *Engine) handleBlockedDomain(queryInfo *DNSQueryInfo, blockedBy, appName
 	e.notifyLog(queryInfo.Domain, true, queryInfo.QueryType, elapsed, appName, "", blockedBy, "", false)
 }
 
-// handleForward forwards a DNS query to upstream and writes the response.
 func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTime time.Time) {
-	// Grab resolver snapshot under lock to avoid nil dereference during shutdown
+
 	e.mu.Lock()
 	resolver := e.resolver
 	dnsCache := e.dnsCache
 	e.mu.Unlock()
 	if resolver == nil {
-		// Engine is shutting down, drop the query silently
+
 		return
 	}
 
@@ -349,11 +332,6 @@ func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTim
 	e.notifyLog(queryInfo.Domain, false, queryInfo.QueryType, elapsed, appName, resolvedIPs, "", "", isCached)
 }
 
-// isUpstreamBlocked reports whether a DNS response indicates the domain was
-// blocked by the upstream server (e.g., NextDNS, AdGuard DNS, ControlD),
-// which typically return 0.0.0.0 (A) or :: (AAAA). Only flagged when ALL
-// answer records are null IPs; NXDOMAIN, empty answers, and mixed null/real
-// results are NOT flagged to avoid false positives (e.g. typos).
 func isUpstreamBlocked(rawResp []byte) bool {
 	var msg dns.Msg
 	if err := msg.Unpack(rawResp); err != nil {
@@ -362,7 +340,6 @@ func isUpstreamBlocked(rawResp []byte) bool {
 	return isUpstreamBlockedMsg(&msg)
 }
 
-// isUpstreamBlockedMsg is the zero-copy variant operating on an already unpacked *dns.Msg.
 func isUpstreamBlockedMsg(msg *dns.Msg) bool {
 	if msg == nil || len(msg.Answer) == 0 {
 		return false
@@ -389,7 +366,6 @@ func isUpstreamBlockedMsg(msg *dns.Msg) bool {
 	return ipRecordCount > 0 && nullCount == ipRecordCount
 }
 
-// resolvedAddresses extracts comma-separated IP strings from the answer section.
 func resolvedAddresses(rawResponse []byte) string {
 	var response dns.Msg
 	if err := response.Unpack(rawResponse); err != nil {
@@ -398,7 +374,6 @@ func resolvedAddresses(rawResponse []byte) string {
 	return resolvedAddressesMsg(&response)
 }
 
-// resolvedAddressesMsg is the zero-copy variant operating on an already unpacked *dns.Msg.
 func resolvedAddressesMsg(response *dns.Msg) string {
 	if response == nil {
 		return ""

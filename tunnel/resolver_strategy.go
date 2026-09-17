@@ -1,3 +1,11 @@
+// resolver_strategy.go implements upstream query scheduling and failover strategies.
+//
+// Scheduling Strategies:
+// - Fastest: Races queries across all configured upstreams, returning the fastest valid answer.
+// - Fallback: Prioritizes primary upstreams, escalating to secondary upstreams upon timeout or failure.
+// - Round-Robin: Distributes load evenly across available providers.
+// - Wire Utilities: Provides zero-allocation domain parsing from raw DNS wire packets.
+
 package tunnel
 
 import (
@@ -12,7 +20,6 @@ import (
 
 const predictionBackupDelay = 50 * time.Millisecond
 
-// extractDomain parses the queried domain name from a raw DNS query.
 func extractDomain(rawQuery []byte) string {
 	var msg dns.Msg
 	if err := msg.Unpack(rawQuery); err != nil || len(msg.Question) == 0 {
@@ -270,7 +277,7 @@ func (r *Resolver) resolveSmartPrediction(rawQuery []byte, queryName string, que
 			if fallbackTriggered && completed >= expected {
 				goto DONE
 			} else if !fallbackTriggered && completed >= 1 {
-				// Primary failed and triggered backups, wait for backups
+
 			}
 		}
 	}

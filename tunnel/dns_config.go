@@ -1,3 +1,6 @@
+// dns_config.go parses and models DNS configuration JSON payloads received from Android Kotlin,
+// translating user settings into structured DNSProtocol types, provider endpoints, and fallback configurations.
+
 package tunnel
 
 import (
@@ -101,8 +104,6 @@ func canonicalDNSMode(mode string) (string, error) {
 	}
 }
 
-// ApplyDNSConfig atomically applies the complete Android DNS configuration.
-// The JSON form keeps the gomobile API stable as fields are added.
 func (e *Engine) ApplyDNSConfig(configJSON string) error {
 	var cfg dnsEngineConfig
 	decoder := json.NewDecoder(strings.NewReader(configJSON))

@@ -1,3 +1,6 @@
+// resolver_test.go provides end-to-end integration and unit tests for DNS resolvers,
+// exercising multi-protocol dispatch, failover chains, and connection error handling.
+
 package tunnel
 
 import (
@@ -181,11 +184,10 @@ func TestResolver_SingleMode(t *testing.T) {
 }
 
 func TestResolver_PrimaryBackupMode(t *testing.T) {
-	// Server 1 fails (SERVFAIL)
+
 	srv1, addr1 := startMockDNSServer(t, makeAnswerHandler("", 0))
 	defer srv1.Shutdown()
 
-	// Server 2 succeeds
 	srv2, addr2 := startMockDNSServer(t, makeAnswerHandler("9.9.9.9", 0))
 	defer srv2.Shutdown()
 
@@ -225,11 +227,10 @@ func TestResolver_PrimaryBackupMode(t *testing.T) {
 }
 
 func TestResolver_ParallelRaceMode(t *testing.T) {
-	// Slow server (150ms)
+
 	srvSlow, addrSlow := startMockDNSServer(t, makeAnswerHandler("1.1.1.1", 150*time.Millisecond))
 	defer srvSlow.Shutdown()
 
-	// Fast server (5ms)
 	srvFast, addrFast := startMockDNSServer(t, makeAnswerHandler("2.2.2.2", 5*time.Millisecond))
 	defer srvFast.Shutdown()
 
@@ -266,11 +267,10 @@ func TestResolver_ParallelRaceMode(t *testing.T) {
 }
 
 func TestResolver_SmartPredictionMode(t *testing.T) {
-	// Fast primary server (5ms)
+
 	srv1, addr1 := startMockDNSServer(t, makeAnswerHandler("10.0.0.1", 5*time.Millisecond))
 	defer srv1.Shutdown()
 
-	// Slow backup server (100ms)
 	srv2, addr2 := startMockDNSServer(t, makeAnswerHandler("10.0.0.2", 100*time.Millisecond))
 	defer srv2.Shutdown()
 
@@ -301,7 +301,7 @@ func TestResolver_SmartPredictionMode(t *testing.T) {
 	if res == nil {
 		t.Fatalf("Expected race log result, got nil")
 	}
-	// Fast server should have responded before the 50ms fallback trigger
+
 	if res.winnerProviderID != "p1" || res.fallbackUsed {
 		t.Errorf("Expected p1 to win without fallback, got %+v", res)
 	}

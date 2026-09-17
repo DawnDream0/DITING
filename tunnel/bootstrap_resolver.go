@@ -1,3 +1,10 @@
+// bootstrap_resolver.go resolves encrypted DNS provider hostnames to bootstrap IP addresses.
+//
+// Reliability Architecture:
+// - Server Racing: Dispatches simultaneous UDP queries across multiple public DNS bootstrap servers, selecting the fastest valid response.
+// - Health Scoring: Tracks success latency and consecutive failures per bootstrap endpoint.
+// - System Fallback: Falls back to protected system DNS resolution if all bootstrap racing attempts fail.
+
 package tunnel
 
 import (
@@ -14,7 +21,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-// BootstrapLogCallback is implemented by Android/Kotlin to receive bootstrap resolution metrics.
 type BootstrapLogCallback interface {
 	OnBootstrapResult(
 		ipID string,
@@ -243,7 +249,6 @@ func (b *bootstrapResolver) UpdateConfig(cfg bootstrapConfig) {
 	copy(b.ips, cfg.IPs)
 	b.mu.Unlock()
 
-	// Clear cache on config change
 	b.cacheMu.Lock()
 	b.cache = make(map[string]*cachedBootstrapHost)
 	b.cacheMu.Unlock()
@@ -396,8 +401,6 @@ func chooseWeighted(candidates []bootstrapScore) bootstrapScore {
 	return candidates[len(candidates)-1]
 }
 
-// ResolveHost resolves host to an IP address using Bootstrap DNS IPs with dynamic weighted plan.
-// If host is already an IP or bootstrap is disabled, it returns host as-is.
 func (b *bootstrapResolver) ResolveHost(ctx context.Context, host string) (string, error) {
 	if host == "" {
 		return "", fmt.Errorf("empty host")
@@ -531,7 +534,6 @@ func queryBootstrapDNS(ctx context.Context, bootstrapServer, host string, protec
 		}
 	}
 
-	// If no A record, try AAAA query
 	msgAAAA := new(dns.Msg)
 	msgAAAA.SetQuestion(dns.Fqdn(host), dns.TypeAAAA)
 	msgAAAA.RecursionDesired = true
@@ -554,4 +556,3 @@ func queryBootstrapDNS(ctx context.Context, bootstrapServer, host string, protec
 
 	return "", fmt.Errorf("no A/AAAA record for %s from %s", host, serverAddr)
 }
-

@@ -1,3 +1,6 @@
+// dns_config_test.go contains unit tests for DNS configuration deserialization,
+// testing protocol parsing (Plain, DoH, DoT, DoQ), endpoint formatting, and fallback server validation.
+
 package tunnel
 
 import (

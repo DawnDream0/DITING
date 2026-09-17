@@ -1,3 +1,15 @@
+// engine_standalone.go implements standalone DNS server capabilities (root and proxy modes),
+// allowing the engine to operate without an active Android VPN TUN device.
+//
+// Core Standalone Mechanisms:
+// - Direct socket binding on IPv4 and IPv6 loopback interfaces with iptables REDIRECT support,
+//   preserving original client source ports for /proc/net/udp UID and package attribution.
+// - Discovery of Designated Resolvers (DDR, RFC 9462) mitigation: returns NXDOMAIN for
+//   _dns.resolver.arpa to prevent clients (Android 13+, Chrome) from bypassing local filtering.
+// - Priority evaluation: Firewall checks -> CNAME rewrites -> PolicyEngine -> Native Tries -> Upstream.
+// - lookupIP fallback: provides dedicated, direct public DNS resolution for internal engine
+//   components (such as the MITM proxy), bypassing fragile Android system resolver stubs.
+
 package tunnel
 
 import (
@@ -9,16 +21,10 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Standalone DNS server (root/proxy mode).
-
-// ServeDNS handles incoming DNS queries directly from a socket (no TUN fd).
 func (e *Engine) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	e.serveDNS(w, r, "", UIDUnknown)
 }
 
-// serveDNS is the implementation. appOverride, when non-empty, is used as
-// the logged app name (full-tunnel passes the UID-resolved package here so
-// DNS is attributed to the real app instead of the root-mode "RootProxy").
 func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, uid int) {
 	startTime := time.Now()
 	if len(r.Question) == 0 {
@@ -33,9 +39,6 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		return
 	}
 
-	// Local asset host: synthesize a response with a routable IP from
-	// the RFC 5737 documentation range so the browser can SYN to it
-	// and have the packet enter our TUN.
 	if domain == LocalAssetHost {
 		m := new(dns.Msg)
 		m.SetReply(r)
@@ -43,7 +46,7 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 			rr, _ := dns.NewRR(fmt.Sprintf("%s 300 IN A %s", r.Question[0].Name, localAssetSynthIP.String()))
 			m.Answer = append(m.Answer, rr)
 		} else if queryType == dns.TypeAAAA {
-			// No IPv6 for local asset host; return empty NOERROR
+
 		}
 		_ = w.WriteMsg(m)
 		e.totalQueries.Add(1)
@@ -51,9 +54,7 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 	}
 
 	appName := "RootProxy"
-	// Try to resolve the real app name from the source port of the incoming connection.
-	// iptables REDIRECT preserves the original source port, so we can look up the UID
-	// in /proc/net/udp by matching that port.
+
 	if appOverride != "" {
 		appName = appOverride
 	} else if e.appResolver != nil {
@@ -73,7 +74,7 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 					srcIP = a.IP
 				}
 			default:
-				// Fallback: parse "host:port" string
+
 				if host, portStr, err := net.SplitHostPort(addr.String()); err == nil {
 					if p, err2 := fmt.Sscanf(portStr, "%d", &srcPort); p == 1 && err2 == nil {
 						if parsed := net.ParseIP(host); parsed != nil {
@@ -84,7 +85,7 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 			}
 
 			if srcPort > 0 {
-				// Normalize to IPv4 bytes if possible, otherwise use raw 16-byte IPv6
+
 				ipBytes := srcIP.To4()
 				if ipBytes == nil {
 					ipBytes = srcIP.To16()
@@ -106,10 +107,6 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		}
 	}
 
-	// Discovery of Designated Resolvers (DDR, RFC 9462):
-	// Return NXDOMAIN for _dns.resolver.arpa queries to prevent clients
-	// (Android 13+, Chrome) from opportunistically upgrading to encrypted
-	// DoH/DoQ endpoints that bypass local VPN DNS filtering.
 	if domain == "_dns.resolver.arpa" || strings.HasSuffix(domain, "._dns.resolver.arpa") {
 		m := new(dns.Msg)
 		m.SetReply(r)
@@ -121,7 +118,6 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		return
 	}
 
-	// 0. Firewall (App Blocker) Check
 	if e.firewallChecker != nil && appName != "" && appName != "RootProxy" {
 		if e.firewallChecker.ShouldBlock(appName) {
 			e.standaloneBlock(w, r, "firewall", appName, startTime)
@@ -129,16 +125,12 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		}
 	}
 
-	// CNAME rewrites take precedence over allow/block rules. Resolve the
-	// target through the configured upstream and return a complete answer so
-	// Android stub resolvers do not have to chase an incomplete CNAME.
 	if target := e.rewriteTarget(domain); target != "" {
 		if e.standaloneRewrite(w, r, target, appName, startTime) {
 			return
 		}
 	}
 
-	// 1. Local Go PolicyEngine check (zero JNI, fast path)
 	if e.policyEngine != nil && e.policyEngine.isActive() && e.policyEngine.hasRules() {
 		blocked, reason := e.policyEngine.evaluate(domain, appName)
 		if blocked {
@@ -149,7 +141,7 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 			e.standaloneForward(w, r, appName, startTime, uid)
 			return
 		}
-		// If domain was neither blocked nor explicitly allowed, check legacy checker as safety fallback if present
+
 		if e.domainChecker != nil {
 			checkRes := e.domainChecker.CheckDomain(domain, appName)
 			if checkRes == "__ALLOW__" {
@@ -163,7 +155,7 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		e.standaloneForward(w, r, appName, startTime, uid)
 		return
 	} else {
-		// Fallback to legacy checks if policyEngine has no rules
+
 		if e.hasImportantMatch(domain) {
 			e.standaloneBlock(w, r, "important", appName, startTime)
 			return
@@ -180,7 +172,6 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		}
 	}
 
-	// 2. Fast Native Go Tries (Security then Ads)
 	e.mu.Lock()
 	secBlooms := e.secBlooms
 	secTries := e.secTries
@@ -191,26 +182,38 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 	var matchedIDs []string
 
 	for i, secTrie := range secTries {
-		if secTrie == nil { continue }
+		if secTrie == nil {
+			continue
+		}
 		var secBloom *BloomFilter
-		if i < len(secBlooms) { secBloom = secBlooms[i] }
+		if i < len(secBlooms) {
+			secBloom = secBlooms[i]
+		}
 		if secBloom == nil || secBloom.MightContainDomainOrParent(domain) {
 			if secTrie.ContainsOrParent(domain) {
 				id := "security"
-				if i < len(e.secTrieIDs) { id = e.secTrieIDs[i] }
+				if i < len(e.secTrieIDs) {
+					id = e.secTrieIDs[i]
+				}
 				matchedIDs = append(matchedIDs, id)
 			}
 		}
 	}
 
 	for i, adTrie := range adTries {
-		if adTrie == nil { continue }
+		if adTrie == nil {
+			continue
+		}
 		var adBloom *BloomFilter
-		if i < len(adBlooms) { adBloom = adBlooms[i] }
+		if i < len(adBlooms) {
+			adBloom = adBlooms[i]
+		}
 		if adBloom == nil || adBloom.MightContainDomainOrParent(domain) {
 			if adTrie.ContainsOrParent(domain) {
 				id := "filter_list"
-				if i < len(e.adTrieIDs) { id = e.adTrieIDs[i] }
+				if i < len(e.adTrieIDs) {
+					id = e.adTrieIDs[i]
+				}
 				matchedIDs = append(matchedIDs, id)
 			}
 		}
@@ -221,17 +224,9 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		return
 	}
 
-	// 3. Forward to Upstream
 	e.standaloneForward(w, r, appName, startTime, uid)
 }
 
-// lookupIP resolves a domain to an IP via the engine's internal resolver.
-// Used by the MITM proxy to bypass Android's problematic system DNS resolver
-// (the app itself may be excluded from the VPN). Uses the full Resolve()
-// pipeline (DoH/DoT/DoQ/Plain + fallback); on transport failure it falls back
-// to direct UDP against well-known public resolvers. A successful response
-// with no A record (NXDOMAIN / empty answer) is NOT retried — that's
-// intentional filtering by the user's configured DNS.
 func (e *Engine) lookupIP(domain string) (net.IP, error) {
 	e.mu.Lock()
 	resolver := e.resolver
@@ -252,10 +247,7 @@ func (e *Engine) lookupIP(domain string) (net.IP, error) {
 
 	resp, err := resolver.Resolve(rawQuery)
 	if err != nil {
-		// Primary + configured fallback both failed at the transport
-		// level. Try unfiltered public DNS over plain UDP so the MITM
-		// proxy doesn't have to fall through to Go's system resolver
-		// (which is unreliable on Android for VPN-excluded processes).
+
 		for _, server := range []string{"1.1.1.1:53", "8.8.8.8:53"} {
 			if ip, fbErr := resolver.ResolveARecord(domain, server); fbErr == nil && ip != nil {
 				logf("lookupIP: %s resolved via public fallback %s (primary err: %v)", domain, server, err)
@@ -320,7 +312,6 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 		return
 	}
 
-	// Grab resolver snapshot under lock to avoid nil dereference during shutdown
 	e.mu.Lock()
 	resolver := e.resolver
 	dnsCache := e.dnsCache
@@ -439,12 +430,16 @@ func (e *Engine) standaloneRewrite(w dns.ResponseWriter, r *dns.Msg, target, app
 		case *dns.A:
 			if qtype == dns.TypeA {
 				response.Answer = append(response.Answer, record)
-				if resolvedIP == "" { resolvedIP = record.A.String() }
+				if resolvedIP == "" {
+					resolvedIP = record.A.String()
+				}
 			}
 		case *dns.AAAA:
 			if qtype == dns.TypeAAAA {
 				response.Answer = append(response.Answer, record)
-				if resolvedIP == "" { resolvedIP = record.AAAA.String() }
+				if resolvedIP == "" {
+					resolvedIP = record.AAAA.String()
+				}
 			}
 		}
 	}
@@ -457,15 +452,12 @@ func (e *Engine) standaloneRewrite(w dns.ResponseWriter, r *dns.Msg, target, app
 	return true
 }
 
-// StartStandalone starts the engine in DNS-only standalone mode on 127.0.0.1:port
-// It bypasses TUN and directly serves incoming UDP/TCP DNS queries.
 func (e *Engine) StartStandalone(port int) error {
 	e.mu.Lock()
 
 	var oldUdp, oldTcp, oldUdp6, oldTcp6 *dns.Server
 	var oldResolver *Resolver
 
-	// If already running, capture pointers to release outside lock
 	if e.running {
 		oldUdp = e.standaloneUdp
 		e.standaloneUdp = nil
@@ -484,8 +476,6 @@ func (e *Engine) StartStandalone(port int) error {
 	e.totalQueries.Store(0)
 	e.blockedQueries.Store(0)
 
-	// Since we are not using a TUN interface, we don't need a SocketProtector
-	// Root/Proxy mode traffic naturally avoids loops due to iptables owner UID matching.
 	e.resolver = NewResolver(nil)
 	e.resolver.SetRaceLogCallback(e.raceLogCallback)
 	e.resolver.SetBootstrapLogCallback(e.bootstrapLogCallback)
@@ -499,7 +489,6 @@ func (e *Engine) StartStandalone(port int) error {
 	}
 	e.mu.Unlock()
 
-	// Shutdown old servers outside the lock
 	if oldUdp != nil {
 		oldUdp.Shutdown()
 	}
@@ -516,13 +505,12 @@ func (e *Engine) StartStandalone(port int) error {
 		oldResolver.Shutdown()
 	}
 
-	// Bind strictly to IPv4 AND IPv6 loopback separately for maximum security and proxy accuracy
 	addr4 := fmt.Sprintf("127.0.0.1:%d", port)
 	addr6 := fmt.Sprintf("[::1]:%d", port)
 
 	udpServer := &dns.Server{Addr: addr4, Net: "udp", Handler: dns.HandlerFunc(e.ServeDNS)}
 	tcpServer := &dns.Server{Addr: addr4, Net: "tcp", Handler: dns.HandlerFunc(e.ServeDNS)}
-	
+
 	udpServer6 := &dns.Server{Addr: addr6, Net: "udp6", Handler: dns.HandlerFunc(e.ServeDNS)}
 	tcpServer6 := &dns.Server{Addr: addr6, Net: "tcp6", Handler: dns.HandlerFunc(e.ServeDNS)}
 
@@ -550,7 +538,7 @@ func (e *Engine) StartStandalone(port int) error {
 	go func() {
 		if err := udpServer6.ListenAndServe(); err != nil {
 			logf("Standalone UDP IPv6 stopped: %v", err)
-			// IPv6 might fail on v4-only kernels, ignore to prevent crashing the whole engine
+
 		}
 	}()
 	go func() {
@@ -559,10 +547,8 @@ func (e *Engine) StartStandalone(port int) error {
 		}
 	}()
 
-	// Give servers a moment to bind
 	time.Sleep(100 * time.Millisecond)
 
-	// Check if IPv4 servers failed to start (critical error)
 	select {
 	case err := <-errChan:
 		return fmt.Errorf("IPv4 Server failed to start: %v", err)

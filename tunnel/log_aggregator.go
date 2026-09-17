@@ -1,3 +1,10 @@
+// log_aggregator.go provides a high-throughput, non-blocking batch aggregator for DNS and connection logs.
+//
+// Flow Control & Load Shedding:
+// - Tier 1 (High-water mark > 75% capacity): Proactively sheds low-priority connection logs to preserve capacity for critical DNS queries.
+// - Tier 2 (100% capacity): Drops incoming items silently to ensure TUN packet processing and DNS resolution are never blocked.
+// - Background Flush: Buffers events and flushes to the Kotlin BatchLogCallback based on batch size thresholds or periodic timer ticks.
+
 package tunnel
 
 import (
@@ -7,7 +14,6 @@ import (
 	"time"
 )
 
-// logItem represents an individual DNS or connection event for batch reporting.
 type logItem struct {
 	Domain         string `json:"d"`
 	Blocked        bool   `json:"b"`
@@ -23,19 +29,18 @@ type logItem struct {
 
 const (
 	logBufferSize    = 2048
-	logHighWaterMark = (logBufferSize * 3) / 4 // 1536: early drop threshold for connection logs
+	logHighWaterMark = (logBufferSize * 3) / 4
 	logBatchSize     = 50
 	logFlushInterval = 100 * time.Millisecond
 )
 
-// logAggregator aggregates individual log events into batches to reduce cross-layer JNI overhead.
 type logAggregator struct {
-	mu             sync.RWMutex
-	ch             chan logItem
-	callback       BatchLogCallback
-	stopChan       chan struct{}
-	running        atomic.Bool
-	droppedLogs    atomic.Uint64
+	mu              sync.RWMutex
+	ch              chan logItem
+	callback        BatchLogCallback
+	stopChan        chan struct{}
+	running         atomic.Bool
+	droppedLogs     atomic.Uint64
 	droppedConnLogs atomic.Uint64
 }
 
@@ -45,7 +50,6 @@ func newLogAggregator() *logAggregator {
 	}
 }
 
-// setCallback sets the Kotlin batch log callback receiver.
 func (a *logAggregator) setCallback(cb BatchLogCallback) {
 	if a == nil {
 		return
@@ -55,7 +59,6 @@ func (a *logAggregator) setCallback(cb BatchLogCallback) {
 	a.callback = cb
 }
 
-// hasCallback returns whether a batch callback is currently registered.
 func (a *logAggregator) hasCallback() bool {
 	if a == nil {
 		return false
@@ -65,24 +68,17 @@ func (a *logAggregator) hasCallback() bool {
 	return a.callback != nil
 }
 
-// push adds an item to the aggregator channel non-blockingly with tiered backpressure protection:
-// 1. High-water mark (> 75% capacity): low-priority connection logs (blockedBy == "connection")
-//    are proactively dropped to safeguard capacity for critical DNS query logs.
-// 2. Buffer full (100% capacity): all log items are dropped silently without blocking the caller.
-// TUN data forwarding and DNS queries are never delayed or deadlocked.
 func (a *logAggregator) push(item logItem) {
 	if a == nil {
 		return
 	}
 
-	// Tier 1: Proactive load-shedding of low-priority connection logs (only unblocked)
 	if !item.Blocked && item.BlockedBy == "connection" && len(a.ch) >= logHighWaterMark {
 		a.droppedConnLogs.Add(1)
 		a.droppedLogs.Add(1)
 		return
 	}
 
-	// Tier 2: Non-blocking write with silent drop on overflow
 	select {
 	case a.ch <- item:
 	default:
@@ -90,7 +86,6 @@ func (a *logAggregator) push(item logItem) {
 	}
 }
 
-// droppedCount returns total dropped log events due to buffer congestion/overflow.
 func (a *logAggregator) droppedCount() uint64 {
 	if a == nil {
 		return 0
@@ -98,7 +93,6 @@ func (a *logAggregator) droppedCount() uint64 {
 	return a.droppedLogs.Load()
 }
 
-// droppedConnCount returns low-priority connection logs dropped by proactive backpressure.
 func (a *logAggregator) droppedConnCount() uint64 {
 	if a == nil {
 		return 0
@@ -106,7 +100,6 @@ func (a *logAggregator) droppedConnCount() uint64 {
 	return a.droppedConnLogs.Load()
 }
 
-// start begins the background batching goroutine.
 func (a *logAggregator) start() {
 	if a == nil || a.running.Swap(true) {
 		return
@@ -147,7 +140,7 @@ func (a *logAggregator) start() {
 					flush()
 				}
 			case <-stop:
-				// Drain any remaining items on stop
+
 				for {
 					select {
 					case item := <-a.ch:
@@ -167,7 +160,6 @@ func (a *logAggregator) start() {
 	}()
 }
 
-// stop stops the background batching goroutine and flushes pending items.
 func (a *logAggregator) stop() {
 	if a == nil || !a.running.Swap(false) {
 		return

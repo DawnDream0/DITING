@@ -1,3 +1,9 @@
+// resolver_dot.go implements DNS-over-TLS (DoT, RFC 7858) client connectivity.
+//
+// Framing & Pooling:
+// - Manages a pool of reusable TLS connections framed with 2-byte message length prefixes.
+// - Detects stale or broken connections on read/write errors, automatically reconnecting with protected dialers.
+
 package tunnel
 
 import (
@@ -59,7 +65,6 @@ func (e *dotConnEntry) isAlive() bool {
 	return true
 }
 
-// closeDoTConns closes all idle DoT connections held by this resolver.
 func (r *Resolver) closeDoTConns() {
 	r.dotMu.Lock()
 	defer r.dotMu.Unlock()
@@ -161,7 +166,6 @@ func (r *Resolver) dialFreshDoTConn(ctx context.Context, host, targetServer stri
 	}, nil
 }
 
-// queryDoT sends a DNS query via DNS-over-TLS (RFC 7858).
 func (r *Resolver) queryDoT(rawQuery []byte, server string) ([]byte, error) {
 	return r.queryDoTContext(context.Background(), rawQuery, server)
 }
@@ -189,7 +193,6 @@ func (r *Resolver) queryDoTContext(ctx context.Context, rawQuery []byte, server 
 	}
 	targetServer := net.JoinHostPort(targetHost, port)
 
-	// Try using an idle pooled connection first with a bounded probe timeout.
 	entry := r.popIdleDoTConn(targetServer)
 	var resp []byte
 	var err error
@@ -200,7 +203,7 @@ func (r *Resolver) queryDoTContext(ctx context.Context, rawQuery []byte, server 
 		probeCancel()
 
 		if err != nil || ctx.Err() != nil {
-			// Stale connection failed or context cancelled; close it and prepare to dial fresh
+
 			entry.close()
 			entry = nil
 			if ctx.Err() != nil {
@@ -231,7 +234,6 @@ func (r *Resolver) queryDoTContext(ctx context.Context, rawQuery []byte, server 
 		return nil, err
 	}
 
-	// Healthy connection: return to pool.
 	r.putIdleDoTConn(targetServer, entry)
 	return resp, nil
 }
@@ -246,7 +248,6 @@ func (r *Resolver) executeDoTQuery(ctx context.Context, entry *dotConnEntry, raw
 	}
 	_ = entry.tlsConn.SetDeadline(deadline)
 
-	// DNS over TCP: 2-byte length prefix
 	lenBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(lenBuf, uint16(len(rawQuery)))
 	if _, err := entry.tlsConn.Write(append(lenBuf, rawQuery...)); err != nil {

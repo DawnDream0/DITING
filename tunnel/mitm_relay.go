@@ -1,3 +1,11 @@
+// mitm_relay.go manages TLS/HTTP MITM interception and request relaying.
+//
+// Client-First Handshake Optimization:
+// - Performs TLS handshake with the client first using dynamic CA-minted certificates. Clients enforcing Certificate
+//   Pinning abort the handshake locally in 1-3ms, avoiding wasted upstream radio and cellular battery consumption.
+// - Following a successful client handshake, establishes protected upstream TLS connections, verifies server certificates,
+//   and executes bidirectional HTTP request/response piping with streaming cosmetic injection.
+
 package tunnel
 
 import (
@@ -8,16 +16,6 @@ import (
 	"strings"
 )
 
-// mitm_relay.go — MITM TLS/HTTP interception: TLS handshake with the
-// client using a dynamic cert, upstream TLS verification, EV/mTLS
-// detection with auto-blacklisting on pinning failures, and the HTTP
-// request/response relay loop with injection.
-
-// mitmTLSFlow performs TLS handshake with the client first using our
-// dynamic cert. If the client enforces Certificate Pinning, it rejects our
-// cert locally in ~1-3ms, avoiding wasteful upstream network dials and radio wakeups.
-// Once client TLS succeeds, it dials the real server with TLS validation
-// and relays HTTP request/response pairs.
 func mitmTLSFlow(
 	clientConn net.Conn,
 	clientReader interface{ Read([]byte) (int, error) },
@@ -29,8 +27,7 @@ func mitmTLSFlow(
 	flow flowID,
 	protectFn func(fd int) bool,
 ) {
-	// 1. Handshake with the client first using our dynamic CA-signed cert.
-	// If the client is pinning the real cert, it will reject ours immediately.
+
 	tlsCfg := certMgr.GetDynamicTLSConfigForHost(hostname)
 	clientTLS := tls.Server(&peekReplayConn{Conn: clientConn, r: clientReader}, tlsCfg)
 	if err := clientTLS.Handshake(); err != nil {
@@ -44,8 +41,6 @@ func mitmTLSFlow(
 	}
 	defer clientTLS.Close()
 
-	// 2. Client accepted our certificate! Dial the real server with socket protection
-	// and IPv6->IPv4 fallback.
 	rawServer, err := dialUpstream(flow, hostname, blocker, protectFn)
 	if err != nil {
 		if engine != nil {
@@ -54,7 +49,6 @@ func mitmTLSFlow(
 		return
 	}
 
-	// Verify the upstream cert against the shared trust store (system roots + bundled ISRG X1/X2).
 	clientCertRequested := false
 	serverConn := tls.Client(rawServer, upstreamTLSConfig(hostname, &clientCertRequested))
 	if err := serverConn.Handshake(); err != nil {
@@ -66,9 +60,6 @@ func mitmTLSFlow(
 	}
 	defer serverConn.Close()
 
-	// 3. Proactive skip check: if the server requested a client certificate (mTLS)
-	// or presents an Extended-Validation (EV) certificate, record in auto-blacklist
-	// so future flows go direct at Gate 5 without interception.
 	if state := serverConn.ConnectionState(); len(state.PeerCertificates) > 0 {
 		leaf := state.PeerCertificates[0]
 		if clientCertRequested || isExtendedValidation(leaf) {
@@ -87,12 +78,9 @@ func mitmTLSFlow(
 		}
 	}
 
-	// 4. Client and upstream TLS both ready — start HTTP relay and injection loop.
 	relayHTTPFlow(clientTLS, serverConn, hostname, blocker, engine, flow, "HTTPS")
 }
 
-// mitmHTTPFlow handles plaintext HTTP (port 80) flows. Same gates
-// and injection as mitmTLSFlow but no TLS.
 func mitmHTTPFlow(
 	clientConn net.Conn,
 	clientReader interface{ Read([]byte) (int, error) },
@@ -114,10 +102,6 @@ func mitmHTTPFlow(
 	relayHTTPFlow(&peekReplayConn{Conn: clientConn, r: clientReader}, serverConn, hostname, blocker, engine, flow, "HTTP/1.1")
 }
 
-// relayHTTPFlow relays HTTP request/response pairs on an established
-// flow: reads requests from the client, forwards them to the server,
-// decompresses and injects into HTML responses, and supports
-// local.pwhs.app sub-requests inside the same session.
 func relayHTTPFlow(clientConn, serverConn net.Conn, hostname string, blocker adBlockChecker, engine *Engine, flow flowID, protocol string) {
 	cr := bufio.NewReader(clientConn)
 	sr := bufio.NewReader(serverConn)
@@ -136,17 +120,17 @@ func relayHTTPFlow(clientConn, serverConn net.Conn, hostname string, blocker adB
 			reqHost = reqHost[:i]
 		}
 
-		// Sub-request local asset inline.
 		if IsLocalAssetHost(reqHost) {
 			resp := ServeLocalAsset(req)
 			resp.Write(clientConn)
 			continue
 		}
 
-
 		if engine != nil {
 			scheme := "http"
-			if protocol == "HTTPS" { scheme = "https" }
+			if protocol == "HTTPS" {
+				scheme = "https"
+			}
 			appName := engine.appNameForFlow(flow, ProtocolTCP)
 			if blocked, matched := engine.requestFilterDecision(scheme, reqHost, req.URL.EscapedPath(), appName); blocked {
 				engine.logHTTPEvent(flow, reqHost, protocol, "blocked", matched)

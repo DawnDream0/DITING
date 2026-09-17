@@ -1,3 +1,10 @@
+// engine_mitm.go orchestrates MITM HTTPS interception lifecycle within Engine.
+//
+// Lifecycle & Configuration:
+// - StartStackMitm initializes root CA certificates, compiles bypass rules, configures smart filtering,
+//   and registers the flow-mode MITM handler on the userspace TCP/IP stack.
+// - StopStackMitm tears down MITM handlers, flushes dynamic leaf certificate caches, and resets stack routing to direct passthrough.
+
 package tunnel
 
 import (
@@ -8,35 +15,10 @@ import (
 	"strings"
 )
 
-// defaultTunMTU matches the VpnService.Builder.setMtu(1400) default.
-// Keeping them aligned avoids PMTU drop on PPPoE (1492) and mobile networks.
 const defaultTunMTU = 1400
 
-// localAssetSynthIP is the synthetic IPv4 address handed out for
-// resolution of LocalAssetHost. RFC 5737 reserves 198.51.100.0/24 for
-// documentation use; nothing in production routes there, so the
-// browser SYN unambiguously enters our TUN where the userspace stack
-// catches it and dispatches to mitm_handler's local-asset branch
-// based on the SNI.
 var localAssetSynthIP = net.IPv4(198, 51, 100, 1)
 
-// HTTPS MITM API — gomobile-compatible methods for controlling HTTPS MITM
-// filtering. The handler is attached to the userspace TCP/IP stack
-// (StartStackMitm + SetUseTcpStack).
-
-// StartStackMitm initialises MITM state for the userspace TCP/IP
-// stack path. Call this in addition to SetUseTcpStack(true) to have
-// the stack handle HTTPS filtering. The persistent Root CA is loaded
-// from (or generated in) certDir; the returned PEM must be installed
-// on-device as a user CA for browsers to accept intercepted TLS.
-// Returns empty string on error (check logs).
-//
-// Kotlin usage:
-//
-//	adapter.setUseTcpStack(true)
-//	val caPem = engine.startStackMitm(context.filesDir.absolutePath)
-//	// Write caPem to storage and prompt the user to install it.
-//	engine.setMitmAllowedUIDs(browserUids.joinToString(","))
 func (e *Engine) StartStackMitm(certDir string) string {
 	certMgr, err := NewCertManager(certDir)
 	if err != nil {
@@ -54,16 +36,11 @@ func (e *Engine) StartStackMitm(certDir string) string {
 	e.certDir = certDir
 	e.mu.Unlock()
 
-	// Persist the auto-blacklist alongside the CA so cert-pinned / EV
-	// domains discovered in one session are remembered in the next —
-	// otherwise every pinned site breaks once per app launch.
 	filter.LoadPersistentBlacklist(filepath.Join(certDir, "mitm_blacklist.txt"))
 
 	return certMgr.GetCACertPEM()
 }
 
-// StopStackMitm clears stack-mode MITM state. The stack itself keeps
-// running on the direct-dial handler after this call.
 func (e *Engine) StopStackMitm() {
 	e.mu.Lock()
 	e.stackCertMgr = nil
@@ -71,26 +48,12 @@ func (e *Engine) StopStackMitm() {
 	e.mu.Unlock()
 }
 
-// SetUseTcpStack toggles whether non-DNS packets are routed into the
-// userspace TCP/IP stack. When true (recommended for HTTPS filtering),
-// the DnsInterceptor redirects non-DNS packets into the stack for
-// per-flow processing (direct dial or MITM depending on whether
-// StartStackMitm was called). When false, non-DNS packets go through
-// the Router → outbound adapter path for DNS-only use. The flag must
-// be set before Engine.Start; runtime toggling after Start is not
-// supported.
 func (e *Engine) SetUseTcpStack(enabled bool) {
 	e.useTcpStack.Store(enabled)
 }
 
-// IsUsingTcpStack reports the current flag value.
 func (e *Engine) IsUsingTcpStack() bool { return e.useTcpStack.Load() }
 
-// SetUIDResolver registers the Kotlin-implemented resolver used to look
-// up the owning app UID for each TCP/UDP flow terminated by the
-// userspace TCP/IP stack. Typically wired once at VPN start.
-//
-// Passing nil clears the resolver; flows will then report UIDUnknown.
 func (e *Engine) SetUIDResolver(r UIDResolver) {
 	e.mu.Lock()
 	e.uidResolver = r
@@ -102,11 +65,6 @@ func (e *Engine) SetUIDResolver(r UIDResolver) {
 	}
 }
 
-// startTcpStackParallel brings up the userspace TCP/IP stack on a
-// packet pipe that the DnsInterceptor will feed from. The mitmProxy
-// and Router remain in place — only non-DNS packets diverge into the
-// stack. Called with e.mu unlocked (sets up state visible to other
-// goroutines atomically via fields protected by locks where necessary).
 func (e *Engine) startTcpStackParallel() error {
 	pipe := newPacketPipe()
 	stack := NewTcpIpStack()
@@ -123,13 +81,13 @@ func (e *Engine) startTcpStackParallel() error {
 
 	stack.SetUIDResolver(uidr)
 	if certMgr != nil && filter != nil {
-		// MITM path — the handler applies the full filtering flow.
+
 		stack.SetTcpHandler(newMitmTcpHandler(certMgr, filter, e, uidr, protectFn))
-		// Drop browser QUIC so HTTP/3 can't bypass the TCP-TLS MITM.
+
 		stack.SetUdpHandler(newMitmUdpHandler(filter, uidr, protectFn))
 		logf("TcpIpStack: MITM handler registered (TCP + QUIC-suppressing UDP)")
 	} else {
-		// Default — direct-dial passthrough, no MITM.
+
 		stack.SetTcpHandler(newProtectedTcpHandler(uidr, protectFn))
 		stack.SetUdpHandler(newProtectedUdpHandler(uidr, protectFn))
 	}
@@ -143,20 +101,12 @@ func (e *Engine) startTcpStackParallel() error {
 		return fmt.Errorf("stack start: %w", err)
 	}
 
-	// Drain outbound packets from the stack and write them back to the
-	// real TUN so responses reach the originating app. Runs until the
-	// pipe is closed (Stop → pipe.Close → Pop returns nil).
 	go e.runTcpStackOutboundWriter(pipe)
 
 	logf("TcpIpStack: parallel path started (flag=on)")
 	return nil
 }
 
-// runTcpStackOutboundWriter drains outbound packets emitted by the
-// stack and forwards them to the real TUN device. The TUN file is
-// captured once at start so the hot path doesn't acquire e.mu on
-// every packet; if Stop closes the TUN, tun.Write returns an error
-// and the goroutine exits cleanly.
 func (e *Engine) runTcpStackOutboundWriter(p *packetPipe) {
 	e.mu.Lock()
 	tun := e.tunFile
@@ -189,16 +139,12 @@ func (e *Engine) runTcpStackOutboundWriter(p *packetPipe) {
 	}
 }
 
-// IsMitmActive returns true when the HTTPS MITM filter is active
-// (stack handler registered with cert manager + filter).
 func (e *Engine) IsMitmActive() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.stackCertMgr != nil
 }
 
-// GetMitmCACert returns the PEM-encoded Root CA certificate. Reads
-// from disk at certDir; stack MITM uses the same ca.crt file.
 func (e *Engine) GetMitmCACert(certDir string) string {
 	e.mu.Lock()
 	certMgr := e.stackCertMgr
@@ -220,15 +166,6 @@ func (e *Engine) GetMitmCACert(certDir string) string {
 	return string(data)
 }
 
-// SetMitmAllowedUIDs sets the Android app UIDs allowed for MITM
-// interception (typically browser UIDs). uidsCsv is comma-separated,
-// e.g. "10145,10200,10201" — gomobile doesn't support []int, so we use
-// a CSV string.
-//
-// Kotlin usage:
-//
-//	val browserUids = listOf(chromeUid, firefoxUid, braveUid)
-//	engine.setMitmAllowedUIDs(browserUids.joinToString(","))
 func (e *Engine) SetMitmAllowedUIDs(uidsCsv string) {
 	e.mu.Lock()
 	stackFilter := e.stackMitmFilter
@@ -258,10 +195,6 @@ func (e *Engine) SetMitmAllowedUIDs(uidsCsv string) {
 	stackFilter.SetAllowedUIDs(uids)
 }
 
-// SetHttpsBypassRules loads the runtime HTTPS bypass list onto
-// the stack-mode MITM filter. The input is a newline-separated string
-// containing exact domains, suffixes, or glob wildcards (*).
-// Blank lines and # / // comments are ignored.
 func (e *Engine) SetHttpsBypassRules(content string) {
 	e.mu.Lock()
 	filter := e.stackMitmFilter
@@ -273,13 +206,10 @@ func (e *Engine) SetHttpsBypassRules(content string) {
 	filter.SetHttpsBypassRules(strings.Split(content, "\n"))
 }
 
-// SetExtraPassthroughSuffixes loads the runtime passthrough list onto
-// the stack-mode MITM filter (maintained for backward compatibility).
 func (e *Engine) SetExtraPassthroughSuffixes(content string) {
 	e.SetHttpsBypassRules(content)
 }
 
-// ClearMitmBlacklist clears in-memory and persistent auto-blacklist entries.
 func (e *Engine) ClearMitmBlacklist() {
 	e.mu.Lock()
 	filter := e.stackMitmFilter
@@ -289,13 +219,6 @@ func (e *Engine) ClearMitmBlacklist() {
 	}
 }
 
-// SetCosmeticCSS sets the minified CSS string to inject into HTML responses
-// for cosmetic ad hiding (e.g., EasyList `##.ad-banner` rules).
-//
-// Kotlin usage:
-//
-//	val css = CosmeticRuleParser.parseToCss(lines)
-//	engine.setCosmeticCSS(css)
 func (e *Engine) SetCosmeticCSS(css string) {
 	SetCosmeticCSS(css)
 }

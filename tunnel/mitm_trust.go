@@ -1,3 +1,10 @@
+// mitm_trust.go manages upstream TLS verification trust stores and certificates.
+//
+// Android Trust Compatibility:
+// - Supplements Android's system trust store (/system/etc/security/cacerts) with embedded ISRG Root X1/X2 (Let's Encrypt)
+//   certificates, preventing TLS handshake failures on legacy Android builds lacking updated root CAs.
+// - Performs Extended Validation (EV) certificate policy OID detection to bypass inspection on high-security endpoints.
+
 package tunnel
 
 import (
@@ -7,29 +14,7 @@ import (
 	"sync"
 )
 
-// mitm_trust.go — Upstream trust store + high-security-cert detection.
-//
-// The MITM handler re-establishes TLS to the *real* server and must verify
-// that server's certificate (we are the client). Go's default verification
-// uses crypto/x509.SystemCertPool(), which on Android reads
-// /system/etc/security/cacerts (and the Conscrypt apex dir). On many
-// devices that store is missing newer roots — most importantly ISRG Root
-// X1/X2 (Let's Encrypt), which back a huge fraction of the web. When the
-// upstream root is missing, serverConn.Handshake() fails, the handler
-// falls back to raw passthrough, and HTTPS filtering silently does nothing
-// for those sites. AdGuard solves this exact problem the same way
-// (ProxyUtils.getCertificates): system pool ∪ hard-coded modern roots,
-// built once and reused for every upstream dial.
-//
-// This file also carries the proactive "should we even MITM this?" checks
-// against the real server cert (EV certificates are left un-intercepted)
-// so we don't break high-assurance sites on the first visit.
-
-// Bundled modern roots — appended to the system pool so upstream
-// verification succeeds even on devices whose system store predates
-// them. These are public CA roots, not secrets.
 const (
-	// ISRG Root X1 (Let's Encrypt) — valid until 2035-06-04.
 	isrgRootX1PEM = `-----BEGIN CERTIFICATE-----
 MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
@@ -62,7 +47,6 @@ mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
 emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 -----END CERTIFICATE-----`
 
-	// ISRG Root X2 (Let's Encrypt, ECDSA) — valid until 2040-09-17.
 	isrgRootX2PEM = `-----BEGIN CERTIFICATE-----
 MIICGzCCAaGgAwIBAgIQQdKd0XLq7qeAwSxs6S+HUjAKBggqhkjOPQQDAzBPMQsw
 CQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFyY2gg
@@ -84,11 +68,6 @@ var (
 	upstreamPool     *x509.CertPool
 )
 
-// upstreamRootPool returns the shared trust store for verifying real
-// upstream servers: the OS system pool plus the bundled modern roots.
-// Built once and cached. If SystemCertPool() fails (rare), we start
-// from an empty pool and rely on the bundled roots — still better than
-// no verification.
 func upstreamRootPool() *x509.CertPool {
 	upstreamPoolOnce.Do(func() {
 		pool, err := x509.SystemCertPool()
@@ -108,21 +87,12 @@ func upstreamRootPool() *x509.CertPool {
 	return upstreamPool
 }
 
-// upstreamTLSConfig builds the *tls.Config used when the MITM handler
-// dials the real server as a TLS client. It uses the shared root pool
-// and pins TLS 1.2 as the floor. clientCertRequested, when non-nil, is
-// set to true if the server asks us for a client certificate — the
-// signal AdGuard uses ("certificate_required ... will not filter") to
-// bail out of MITM for mutual-TLS sites.
 func upstreamTLSConfig(serverName string, clientCertRequested *bool) *tls.Config {
 	return &tls.Config{
 		ServerName: serverName,
 		RootCAs:    upstreamRootPool(),
 		MinVersion: tls.VersionTLS12,
-		// The server requesting a client certificate means this is an
-		// mTLS endpoint (corporate SSO, banking, smartcard auth). We
-		// hold no client cert; presenting our MITM cert would break the
-		// site. Record the request so the caller can passthrough.
+
 		GetClientCertificate: func(req *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			if clientCertRequested != nil {
 				*clientCertRequested = true
@@ -132,25 +102,17 @@ func upstreamTLSConfig(serverName string, clientCertRequested *bool) *tls.Config
 	}
 }
 
-// evPolicyOIDs are certificate-policy OIDs that indicate an Extended
-// Validation certificate. The CA/Browser Forum assigns each EV-issuing CA
-// its own arc; enumerating them all is impractical, but the modern unified
-// "extended-validation" policy identifier plus the most common legacy arcs
-// cover the overwhelming majority of EV certs seen in the wild. AdGuard
-// leaves EV sites un-intercepted by default ("Not filtering this TLS
-// connection because '{}' has EV certificate").
 var evPolicyOIDs = []asn1.ObjectIdentifier{
-	{2, 23, 140, 1, 1},              // CA/B Forum — extended-validation (unified)
-	{1, 3, 6, 1, 4, 1, 6449, 1, 2, 1, 5, 1}, // Sectigo/Comodo EV
-	{2, 16, 840, 1, 114412, 2, 1},   // DigiCert EV
-	{2, 16, 840, 1, 114404, 1, 1, 2, 4, 1}, // Entrust EV
-	{1, 3, 6, 1, 4, 1, 14370, 1, 6}, // GeoTrust EV
-	{2, 16, 840, 1, 113733, 1, 7, 23, 6}, // VeriSign/Symantec EV
-	{1, 3, 6, 1, 4, 1, 4146, 1, 1},  // GlobalSign EV
-	{1, 3, 6, 1, 4, 1, 34697, 2, 1}, // Amazon Trust EV (legacy)
+	{2, 23, 140, 1, 1},
+	{1, 3, 6, 1, 4, 1, 6449, 1, 2, 1, 5, 1},
+	{2, 16, 840, 1, 114412, 2, 1},
+	{2, 16, 840, 1, 114404, 1, 1, 2, 4, 1},
+	{1, 3, 6, 1, 4, 1, 14370, 1, 6},
+	{2, 16, 840, 1, 113733, 1, 7, 23, 6},
+	{1, 3, 6, 1, 4, 1, 4146, 1, 1},
+	{1, 3, 6, 1, 4, 1, 34697, 2, 1},
 }
 
-// isExtendedValidation reports whether cert carries an EV policy OID.
 func isExtendedValidation(cert *x509.Certificate) bool {
 	if cert == nil {
 		return false

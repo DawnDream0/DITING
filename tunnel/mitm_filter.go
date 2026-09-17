@@ -1,3 +1,13 @@
+// mitm_filter.go implements the multi-layer Smart Filter governing MITM interception decisions.
+//
+// Evaluation Sequence (Checked in Order):
+// 1. UID Check: Restricts MITM interception strictly to user-whitelisted applications (e.g., specific browsers).
+// 2. Auto-Blacklist: Automatically bypasses domains that failed prior TLS handshakes (certificate pinning or mTLS).
+// 3. Bypass Patterns: Evaluates dynamic wildcard and prefix exclusion rules.
+// 4. Sensitive Keywords: Bypasses financial, banking, and authentication endpoints (e.g., bank, pay, auth, login).
+// 5. IP Destinations: Direct IP connections bypass interception.
+// All gates pass -> Intercept (TLS decryption + cosmetic CSS injection).
+
 package tunnel
 
 import (
@@ -10,18 +20,6 @@ import (
 	"sync"
 	"time"
 )
-
-// MITM Smart Filter — dynamic interception decisions.
-//
-// Multi-layer decision engine (checked in order):
-//   1. UID check        → only allowed UIDs (browsers) are candidates for MITM.
-//   2. Auto-blacklist   → domains with failed TLS handshake (cert pinning) or EV/mTLS, with 7-day TTL and failure threshold.
-//   3. Bypass patterns  → runtime-loaded bypass patterns with wildcard support (*).
-//   4. Refined keywords → domains with sensitive tokens (bank, pay, auth, etc.) using label/word-boundary matching.
-//   5. IP addresses     → direct IP access is never intercepted.
-//
-// All checks pass → intercept (MITM + cosmetic CSS injection).
-// Default for non-browser UIDs → direct pass-through.
 
 const defaultBlacklistTTL = 7 * 24 * time.Hour
 
@@ -36,31 +34,21 @@ type failureRecord struct {
 	lastSeen time.Time
 }
 
-// MitmFilter manages dynamic interception decisions.
 type MitmFilter struct {
 	mu sync.RWMutex
 
-	// allowedUIDs contains the UIDs of apps we're allowed to MITM (browsers).
-	// Key = UID (int32), stored as int for map efficiency.
 	allowedUIDs map[int]bool
 
-	// blacklist contains domains where TLS handshake failed or EV/mTLS detected.
-	// Has expiration timestamp (TTL) and reason.
 	blacklist map[string]blacklistEntry
 
-	// failureCounts tracks recent TLS handshake failures for threshold checking before blacklisting.
 	failureCounts map[string]failureRecord
 
-	// httpsBypassPatterns contains runtime-loaded HTTPS bypass rules (exact, suffix, or glob wildcard).
 	httpsBypassPatterns []string
 
-	// blacklistPath, when non-empty, is the file the auto-blacklist is persisted to.
 	blacklistPath   string
 	blacklistFileMu sync.Mutex
 }
 
-// sniSensitiveKeywords — sensitive tokens. Catches banking, authentication,
-// and payment services using word-boundary and label-level checks.
 var sniSensitiveKeywords = []string{
 	"bank",
 	"pay",
@@ -82,7 +70,6 @@ var sniSensitiveKeywords = []string{
 	"gov",
 }
 
-// NewMitmFilter creates a new filter with no allowed UIDs.
 func NewMitmFilter() *MitmFilter {
 	return &MitmFilter{
 		allowedUIDs:         make(map[int]bool),
@@ -92,7 +79,6 @@ func NewMitmFilter() *MitmFilter {
 	}
 }
 
-// SetAllowedUIDs replaces the set of UIDs allowed for MITM interception.
 func (f *MitmFilter) SetAllowedUIDs(uids []int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -104,21 +90,18 @@ func (f *MitmFilter) SetAllowedUIDs(uids []int) {
 	logf("MITM Filter: updated allowed UIDs (%d apps)", len(uids))
 }
 
-// IsUIDAllowed checks if a UID is in the allowed set.
 func (f *MitmFilter) IsUIDAllowed(uid int) bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.allowedUIDs[uid]
 }
 
-// HasAllowedUIDs returns true if any browser UIDs have been configured.
 func (f *MitmFilter) HasAllowedUIDs() bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return len(f.allowedUIDs) > 0
 }
 
-// SetHttpsBypassRules sets the dedicated HTTPS bypass rules (supports exact domain, suffix, and glob wildcard *).
 func (f *MitmFilter) SetHttpsBypassRules(rules []string) {
 	clean := make([]string, 0, len(rules))
 	for _, s := range rules {
@@ -134,16 +117,10 @@ func (f *MitmFilter) SetHttpsBypassRules(rules []string) {
 	logf("MITM Filter: loaded %d HTTPS bypass rules", len(clean))
 }
 
-// SetExtraPassthroughSuffixes provides backward compatibility for callers.
 func (f *MitmFilter) SetExtraPassthroughSuffixes(suffixes []string) {
 	f.SetHttpsBypassRules(suffixes)
 }
 
-// matchHostPattern evaluates host against pattern supporting:
-// - Exact match ("example.com")
-// - Subdomain suffix (".example.com" or "example.com" matching "*.example.com")
-// - Wildcard glob ("*.example.com", "*-cdn.google.com", "api.*.test.com")
-// - AdGuard format ("||example.com^", "@@||example.com^")
 func matchHostPattern(pattern, host string) bool {
 	pattern = strings.ToLower(strings.TrimSpace(pattern))
 	host = strings.ToLower(strings.TrimSpace(host))
@@ -151,7 +128,6 @@ func matchHostPattern(pattern, host string) bool {
 		return false
 	}
 
-	// Clean AdGuard modifiers
 	pattern = strings.TrimPrefix(pattern, "@@")
 	pattern = strings.TrimPrefix(pattern, "||")
 	pattern = strings.TrimRight(pattern, "^")
@@ -164,7 +140,6 @@ func matchHostPattern(pattern, host string) bool {
 		return false
 	}
 
-	// Wildcard matching
 	if strings.HasPrefix(pattern, "*.") && host == pattern[2:] {
 		return true
 	}
@@ -172,9 +147,6 @@ func matchHostPattern(pattern, host string) bool {
 	return err == nil && matched
 }
 
-// isSensitiveHost checks whether the hostname contains sensitive banking, authentication,
-// or payment terms using label and word-boundary matching to prevent false positives like
-// "author.com", "company.com", or "investor.com".
 func isSensitiveHost(host string) bool {
 	labels := strings.Split(host, ".")
 	for _, lbl := range labels {
@@ -182,14 +154,12 @@ func isSensitiveHost(host string) bool {
 			continue
 		}
 
-		// 1. Direct label match against sensitive keywords
 		for _, kw := range sniSensitiveKeywords {
 			if lbl == kw {
 				return true
 			}
 		}
 
-		// 2. Tokenize label by hyphens/underscores (e.g. "auth-api", "my_login")
 		tokens := strings.FieldsFunc(lbl, func(r rune) bool {
 			return r == '-' || r == '_'
 		})
@@ -201,12 +171,11 @@ func isSensitiveHost(host string) bool {
 			}
 		}
 
-		// 3. Known banking / payment brand & compound patterns
 		if strings.HasSuffix(lbl, "bank") && len(lbl) >= 6 {
-			return true // e.g. citibank, chasebank, mybank
+			return true
 		}
 		if strings.HasPrefix(lbl, "bank") && len(lbl) >= 6 {
-			return true // e.g. bankofamerica
+			return true
 		}
 		switch lbl {
 		case "paypal", "alipay", "tenpay", "wechatpay", "unionpay", "applepay", "googlepay":
@@ -219,9 +188,6 @@ func isSensitiveHost(host string) bool {
 	return false
 }
 
-// IsInterceptionAllowed determines if a domain should be MITM'd.
-// Returns true  → Intercept (decrypt TLS).
-// Returns false → Forward directly (no decryption).
 func (f *MitmFilter) IsInterceptionAllowed(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 
@@ -231,7 +197,6 @@ func (f *MitmFilter) IsInterceptionAllowed(host string) bool {
 
 	now := time.Now()
 
-	// Layer 1: Check auto-blacklist (with TTL)
 	f.mu.RLock()
 	entry, blacklisted := f.blacklist[host]
 	f.mu.RUnlock()
@@ -239,13 +204,12 @@ func (f *MitmFilter) IsInterceptionAllowed(host string) bool {
 		if now.Before(entry.expiresAt) {
 			return false
 		}
-		// Lazy eviction of expired entry
+
 		f.mu.Lock()
 		delete(f.blacklist, host)
 		f.mu.Unlock()
 	}
 
-	// Layer 2: Check runtime-loaded HTTPS bypass patterns (exact, suffix, and wildcard)
 	f.mu.RLock()
 	bypassPatterns := f.httpsBypassPatterns
 	f.mu.RUnlock()
@@ -255,12 +219,10 @@ func (f *MitmFilter) IsInterceptionAllowed(host string) bool {
 		}
 	}
 
-	// Layer 3: Refined SNI sensitive keyword scan (word-boundary & label-based)
 	if isSensitiveHost(host) {
 		return false
 	}
 
-	// Layer 4: IP addresses → never intercept
 	if isIPAddress(host) {
 		return false
 	}
@@ -268,8 +230,6 @@ func (f *MitmFilter) IsInterceptionAllowed(host string) bool {
 	return true
 }
 
-// RecordFailure tracks TLS handshake failures and adds to blacklist once the failure threshold is reached.
-// Returns true if the host was added to the blacklist.
 func (f *MitmFilter) RecordFailure(host string, err error) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" || err == nil {
@@ -307,12 +267,10 @@ func (f *MitmFilter) RecordFailure(host string, err error) bool {
 	return false
 }
 
-// BlacklistDomain permanently adds a domain to the passthrough cache with default reason.
 func (f *MitmFilter) BlacklistDomain(host string) {
 	f.BlacklistDomainWithReason(host, "pinning")
 }
 
-// BlacklistDomainWithReason adds a domain to the passthrough cache with 7-day TTL and persists it.
 func (f *MitmFilter) BlacklistDomainWithReason(host, reason string) {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {
@@ -343,7 +301,6 @@ func (f *MitmFilter) BlacklistDomainWithReason(host, reason string) {
 	}
 }
 
-// ClearBlacklist clears in-memory and persistent auto-blacklist entries.
 func (f *MitmFilter) ClearBlacklist() {
 	f.mu.Lock()
 	f.blacklist = make(map[string]blacklistEntry)
@@ -359,7 +316,6 @@ func (f *MitmFilter) ClearBlacklist() {
 	logf("MITM Filter: cleared auto-blacklist")
 }
 
-// RemoveFromBlacklist removes a specific domain from the blacklist.
 func (f *MitmFilter) RemoveFromBlacklist(host string) {
 	host = strings.ToLower(strings.TrimSpace(host))
 	f.mu.Lock()
@@ -368,7 +324,6 @@ func (f *MitmFilter) RemoveFromBlacklist(host string) {
 	f.mu.Unlock()
 }
 
-// LoadPersistentBlacklist loads existing auto-blacklisted entries from disk.
 func (f *MitmFilter) LoadPersistentBlacklist(path string) {
 	now := time.Now()
 	loaded := 0
@@ -391,7 +346,7 @@ func (f *MitmFilter) LoadPersistentBlacklist(path string) {
 				if expUnix, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64); err == nil {
 					expTime := time.Unix(expUnix, 0)
 					if now.After(expTime) {
-						continue // expired entry skipped
+						continue
 					}
 					expiresAt = expTime
 				}
@@ -416,7 +371,6 @@ func (f *MitmFilter) LoadPersistentBlacklist(path string) {
 	logf("MITM Filter: persistent blacklist at %s (%d active entries loaded)", path, loaded)
 }
 
-// appendBlacklistLine appends one domain with TTL to the persistent blacklist file.
 func (f *MitmFilter) appendBlacklistLine(path, host string, expiresAt time.Time, reason string) {
 	f.blacklistFileMu.Lock()
 	defer f.blacklistFileMu.Unlock()
@@ -433,7 +387,6 @@ func (f *MitmFilter) appendBlacklistLine(path, host string, expiresAt time.Time,
 	}
 }
 
-// GetBlacklistCount returns the number of active (non-expired) auto-blacklisted domains.
 func (f *MitmFilter) GetBlacklistCount() int {
 	now := time.Now()
 	f.mu.RLock()
@@ -447,7 +400,6 @@ func (f *MitmFilter) GetBlacklistCount() int {
 	return count
 }
 
-// isIPAddress checks if a string looks like an IP address (v4 or v6).
 func isIPAddress(host string) bool {
 	if strings.Contains(host, ":") {
 		return true

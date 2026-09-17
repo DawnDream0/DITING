@@ -1,3 +1,9 @@
+// resolver_snapshot.go coordinates atomic swaps and graceful retirement of upstream DNS resolver configurations.
+//
+// Graceful Rotation:
+// - Uses reference counting (active request tracking) and retired flags to ensure active queries complete
+//   before closing underlying resolver connections during dynamic configuration reloads.
+
 package tunnel
 
 import (

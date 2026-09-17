@@ -1,3 +1,8 @@
+// flow_outbound.go implements flow-level outbound transport adapters including direct socket dialing,
+// SOCKS5 proxies (with optional username/password authentication and UDP associate support),
+// and HTTP CONNECT tunnels (with basic authentication). All outbound connections utilize
+// socket protection functions to bypass the Android VPN routing table.
+
 package tunnel
 
 import (
@@ -429,4 +434,4 @@ func (c *packetConnAdapter) Read(p []byte) (int, error) {
 	return n, err
 }
 func (c *packetConnAdapter) Write(p []byte) (int, error) { return c.WriteTo(p, c.remote) }
-func (c *packetConnAdapter) RemoteAddr() net.Addr         { return c.remote }
+func (c *packetConnAdapter) RemoteAddr() net.Addr        { return c.remote }

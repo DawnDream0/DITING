@@ -1,11 +1,12 @@
+// ip_domain_cache.go maintains a bounded, concurrent cache mapping IP addresses back to recently resolved domains.
+// It supports reverse domain lookups, such as resolving domain context when falling back to IPv4 after an IPv6 connection failure.
+
 package tunnel
 
 import (
 	"sync"
 )
 
-// ipDomainCache records recent IP -> domain mappings resolved via DNS.
-// Used for reverse lookups (e.g. falling back to IPv4 when an IPv6 connection fails).
 type ipDomainCache struct {
 	mu      sync.RWMutex
 	entries map[string]string

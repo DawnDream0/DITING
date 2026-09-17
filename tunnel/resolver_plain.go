@@ -1,3 +1,10 @@
+// resolver_plain.go implements standard UDP and TCP DNS resolution (port 53).
+//
+// Mobile Network Optimization:
+// - Performs initial UDP queries with bounded timeouts (1.5s) to mitigate mobile packet loss,
+//   retrying if time permits before falling back to TCP.
+// - Uses protectedDialer to ensure raw socket connections bypass the VPN TUN routing loop.
+
 package tunnel
 
 import (
@@ -9,7 +16,6 @@ import (
 	"time"
 )
 
-// queryPlain sends a DNS query via UDP when supported and otherwise uses TCP.
 func (r *Resolver) queryPlain(rawQuery []byte, server string) ([]byte, error) {
 	return r.queryPlainContext(context.Background(), rawQuery, server)
 }
@@ -63,8 +69,7 @@ func (r *Resolver) queryPlainContext(ctx context.Context, rawQuery []byte, serve
 	}
 
 	buf := make([]byte, 4096)
-	// UDP packets can be dropped on mobile networks.
-	// Wait up to initialUdpTimeout (1.5s) for first attempt; if no response and time remains, retransmit once.
+
 	const initialUdpTimeout = 1500 * time.Millisecond
 	firstDeadline := time.Now().Add(initialUdpTimeout)
 	if firstDeadline.After(deadline) {
@@ -84,7 +89,7 @@ func (r *Resolver) queryPlainContext(ctx context.Context, rawQuery []byte, serve
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		// If timed out on first attempt and remaining time permits, retransmit query once
+
 		if time.Now().Before(deadline) {
 			_ = conn.SetDeadline(deadline)
 			if _, werr := conn.Write(rawQuery); werr == nil {
@@ -157,7 +162,6 @@ func queryPlainTCPContext(ctx context.Context, outbound flowOutbound, rawQuery [
 	return response, nil
 }
 
-// protectedDialer wraps net.Dialer to protect sockets from VPN routing loop.
 type protectedDialer struct {
 	protectFn func(fd int) bool
 }

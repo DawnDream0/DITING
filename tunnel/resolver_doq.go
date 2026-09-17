@@ -1,3 +1,9 @@
+// resolver_doq.go implements the DNS-over-QUIC (DoQ, RFC 9250) client based on quic-go.
+//
+// Connection Lifecycle:
+// - Caches and reuses an active QUIC connection, opening bidirectional streams per DNS query.
+// - Handles 2-byte RFC 9250 message length framing and performs safe connection resets upon session termination.
+
 package tunnel
 
 import (
@@ -13,7 +19,6 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-// queryDoQ sends a DNS query via DNS-over-QUIC (RFC 9250).
 func (r *Resolver) queryDoQ(rawQuery []byte, doqURL string) ([]byte, error) {
 	return r.queryDoQContext(context.Background(), rawQuery, doqURL)
 }
@@ -37,7 +42,7 @@ func (r *Resolver) queryDoQContext(ctx context.Context, rawQuery []byte, doqURL 
 
 	stream, err := conn.OpenStreamSync(streamCtx)
 	if err != nil {
-		// Connection may be stale, reset and retry
+
 		r.resetQUICConn()
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -53,7 +58,6 @@ func (r *Resolver) queryDoQContext(ctx context.Context, rawQuery []byte, doqURL 
 	}
 	defer stream.Close()
 
-	// RFC 9250: 2-byte length prefix + DNS message
 	lenBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(lenBuf, uint16(len(rawQuery)))
 	if _, err := stream.Write(append(lenBuf, rawQuery...)); err != nil {
@@ -72,7 +76,6 @@ func (r *Resolver) queryDoQContext(ctx context.Context, rawQuery []byte, doqURL 
 		return nil, fmt.Errorf("DoQ read: %w", err)
 	}
 
-	// RFC 9250: response may have 2-byte length prefix
 	if len(respData) >= 2 {
 		respLen := binary.BigEndian.Uint16(respData[:2])
 		if int(respLen) == len(respData)-2 {
@@ -152,7 +155,6 @@ type unresolvedUDPAddr string
 func (a unresolvedUDPAddr) Network() string { return "udp" }
 func (a unresolvedUDPAddr) String() string  { return string(a) }
 
-// resetQUICConn closes and clears the QUIC connection.
 func (r *Resolver) resetQUICConn() {
 	r.quicMu.Lock()
 	defer r.quicMu.Unlock()
@@ -163,7 +165,6 @@ func (r *Resolver) resetQUICConn() {
 	}
 }
 
-// parseDoQURL parses a DoQ URL into hostname and port.
 func parseDoQURL(url string) (host, port string) {
 	s := url
 	for _, prefix := range []string{"quic://", "https://", "doq://"} {

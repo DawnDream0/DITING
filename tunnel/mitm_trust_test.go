@@ -1,3 +1,6 @@
+// mitm_trust_test.go validates upstream TLS root certificate trust management,
+// ensuring embedded ISRG root certificates parse correctly, remain valid, and properly integrate into the shared cert pool.
+
 package tunnel
 
 import (
@@ -13,9 +16,6 @@ import (
 	"time"
 )
 
-// TestBundledRootsParse ensures the embedded ISRG roots are valid PEM
-// and currently valid (not expired) — a typo in the base64 would make
-// upstream verification silently weaker, so guard it in CI.
 func TestBundledRootsParse(t *testing.T) {
 	for name, pemStr := range map[string]string{
 		"ISRG Root X1": isrgRootX1PEM,
@@ -38,17 +38,14 @@ func TestBundledRootsParse(t *testing.T) {
 	}
 }
 
-// TestUpstreamRootPoolIncludesBundled verifies the shared pool is built
-// and includes the bundled roots on top of the system pool.
 func TestUpstreamRootPoolIncludesBundled(t *testing.T) {
 	pool := upstreamRootPool()
 	if pool == nil {
 		t.Fatal("upstreamRootPool returned nil")
 	}
-	// Subjects() is deprecated but remains the simplest way to assert the
-	// bundled roots landed in the pool. Match on the ISRG O= RDN.
+
 	found := 0
-	for _, subj := range pool.Subjects() { //nolint:staticcheck
+	for _, subj := range pool.Subjects() {
 		var rdn pkix.RDNSequence
 		if _, err := asn1.Unmarshal(subj, &rdn); err != nil {
 			continue
@@ -64,8 +61,6 @@ func TestUpstreamRootPoolIncludesBundled(t *testing.T) {
 	}
 }
 
-// TestIsExtendedValidation checks EV detection against a cert carrying
-// the unified CA/B Forum EV policy OID, and a non-EV cert.
 func TestIsExtendedValidation(t *testing.T) {
 	mk := func(policies []asn1.ObjectIdentifier) *x509.Certificate {
 		key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -92,7 +87,7 @@ func TestIsExtendedValidation(t *testing.T) {
 		t.Error("expected EV cert to be detected")
 	}
 
-	dv := mk([]asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}}) // domain-validated
+	dv := mk([]asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}})
 	if isExtendedValidation(dv) {
 		t.Error("DV cert should not be flagged EV")
 	}

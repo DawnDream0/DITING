@@ -1,3 +1,11 @@
+// dns_cache.go implements a thread-safe, high-performance in-memory DNS response cache.
+//
+// Cache Semantics & Optimizations:
+// - TTL Enforcement: Adheres to upstream DNS TTLs clamped within configurable min/max bounds.
+// - Zero-Copy Patching: Directly copies pre-packed wire responses and updates the 2-byte query ID for fast-path hits.
+// - Stale Fallback: Serves expired responses within a bounded fallback window while triggering background refreshes.
+// - Single-Flight Deduplication: Consolidates concurrent queries for the same domain and type to prevent upstream stampedes.
+
 package tunnel
 
 import (
@@ -12,7 +20,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-// dnsCacheConfig defines the runtime configuration for DNS caching.
 type dnsCacheConfig struct {
 	Enabled              bool   `json:"enabled"`
 	Mode                 string `json:"mode"`
@@ -36,11 +43,11 @@ type cacheEntry struct {
 	expiresAt    time.Time
 	staleUntil   time.Time
 	hitCount     atomic.Int64
-	lastHitAt    atomic.Int64 // unix nano timestamp
+	lastHitAt    atomic.Int64
 
 	cachedWire atomic.Pointer[cachedWirePack]
 
-	elem *list.Element // pointer in lruList for O(1) eviction
+	elem *list.Element
 }
 
 type cachedWirePack struct {
@@ -48,7 +55,6 @@ type cachedWirePack struct {
 	wire []byte
 }
 
-// dnsCache provides a thread-safe in-memory cache for DNS responses.
 type dnsCache struct {
 	mu         sync.RWMutex
 	config     dnsCacheConfig
@@ -71,7 +77,6 @@ type flightCall struct {
 
 const defaultMaxCacheEntries = 4096
 
-// newDNSCache creates a new dnsCache instance.
 func newDNSCache(cfg dnsCacheConfig) *dnsCache {
 	if cfg.MaxTTLSeconds <= 0 {
 		cfg.MaxTTLSeconds = 3600
@@ -94,21 +99,18 @@ func newDNSCache(cfg dnsCacheConfig) *dnsCache {
 	}
 }
 
-// updatePolicy updates the cache policy dynamically.
 func (c *dnsCache) updatePolicy(cfg dnsCacheConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.config = cfg
 }
 
-// isEnabled returns true if caching is enabled.
 func (c *dnsCache) isEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.config.Enabled
 }
 
-// clear removes all entries from the cache.
 func (c *dnsCache) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -121,7 +123,6 @@ func (c *dnsCache) clear() {
 	c.lruList.Init()
 }
 
-// cacheKey returns the lookup key for a DNS question.
 func cacheKey(domain string, qtype, qclass uint16) string {
 	normalized := strings.ToLower(strings.TrimSuffix(domain, "."))
 	return fmt.Sprintf("%s:%d:%d", normalized, qtype, qclass)
@@ -137,9 +138,6 @@ func extractQuestionFromRaw(rawQuery []byte) (string, uint16, uint16, uint16, bo
 	return domain, q.Qtype, q.Qclass, msg.Id, true
 }
 
-// get checks the cache for a matching unexpired response.
-// If an unexpired entry is found, it returns the patched response bytes with hit=true.
-// If an expired entry within the stale fallback window is found, it returns staleCandidate with stale=true.
 func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandidate *cacheEntry) {
 	c.mu.RLock()
 	enabled := c.config.Enabled
@@ -178,8 +176,6 @@ func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandida
 		entry.lastHitAt.Store(now.UnixNano())
 		c.totalHits.Add(1)
 
-		// Fast path: if wire response was already packed for this exact remaining second,
-		// directly copy the pre-packed bytes and patch the 2-byte queryID in-place!
 		if pack := entry.cachedWire.Load(); pack != nil && pack.sec == remainingSec {
 			res := make([]byte, len(pack.wire))
 			copy(res, pack.wire)
@@ -187,7 +183,6 @@ func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandida
 			return res, true, nil
 		}
 
-		// Cache miss for this second: pack using standard patchDNSResponse
 		patched := patchDNSResponse(entry.msg, queryID, remainingSec)
 		if patched != nil {
 			entry.cachedWire.Store(&cachedWirePack{
@@ -202,7 +197,6 @@ func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandida
 		return nil, false, entry
 	}
 
-	// Past stale window, trigger asynchronous eviction
 	c.mu.Lock()
 	if e, ok := c.entries[key]; ok && e == entry && now.After(e.staleUntil) {
 		delete(c.entries, key)
@@ -217,7 +211,6 @@ func (c *dnsCache) get(rawQuery []byte) (response []byte, hit bool, staleCandida
 	return nil, false, nil
 }
 
-// buildStaleResponse generates a response from a stale cache entry with TTL=1s.
 func (c *dnsCache) buildStaleResponse(rawQuery []byte, entry *cacheEntry) []byte {
 	if entry == nil || entry.msg == nil {
 		return nil
@@ -229,7 +222,6 @@ func (c *dnsCache) buildStaleResponse(rawQuery []byte, entry *cacheEntry) []byte
 	return patchDNSResponse(entry.msg, queryID, 1)
 }
 
-// put stores a successful upstream DNS response into the cache.
 func (c *dnsCache) put(rawQuery, rawResponse []byte) bool {
 	var respMsg dns.Msg
 	if err := respMsg.Unpack(rawResponse); err != nil {
@@ -238,7 +230,6 @@ func (c *dnsCache) put(rawQuery, rawResponse []byte) bool {
 	return c.putMsg(rawQuery, rawResponse, &respMsg)
 }
 
-// putMsg stores a successful upstream DNS response into the cache using an already unpacked dns.Msg.
 func (c *dnsCache) putMsg(rawQuery, rawResponse []byte, respMsg *dns.Msg) bool {
 	if respMsg == nil {
 		return false
@@ -255,7 +246,6 @@ func (c *dnsCache) putMsg(rawQuery, rawResponse []byte, respMsg *dns.Msg) bool {
 		return false
 	}
 
-	// Only cache NOERROR responses with answers
 	if respMsg.Rcode != dns.RcodeSuccess || len(respMsg.Answer) == 0 {
 		return false
 	}
@@ -332,7 +322,7 @@ func (c *dnsCache) calculateEffectiveTTL(upstreamTTL uint32) time.Duration {
 	ttl := int64(upstreamTTL)
 	switch strings.ToLower(cfg.Mode) {
 	case "follow_dns_ttl":
-		// Follow upstream TTL directly
+
 	case "limit_max_ttl":
 		if cfg.MaxTTLSeconds > 0 && ttl > cfg.MaxTTLSeconds {
 			ttl = cfg.MaxTTLSeconds
@@ -359,8 +349,6 @@ func (c *dnsCache) calculateEffectiveTTL(upstreamTTL uint32) time.Duration {
 	return time.Duration(ttl) * time.Second
 }
 
-// singleFlight resolves a query with deduplication so multiple concurrent identical queries
-// only trigger one upstream resolution.
 func (c *dnsCache) singleFlight(rawQuery []byte, resolveFn func() ([]byte, error)) ([]byte, bool, error) {
 	domain, qtype, qclass, queryID, ok := extractQuestionFromRaw(rawQuery)
 	if !ok {
@@ -368,7 +356,6 @@ func (c *dnsCache) singleFlight(rawQuery []byte, resolveFn func() ([]byte, error
 		return resp, false, err
 	}
 
-	// Fast path: check unexpired cache response before upstream resolution
 	if cachedResp, hit, _ := c.get(rawQuery); hit {
 		return cachedResp, true, nil
 	}
@@ -382,11 +369,11 @@ func (c *dnsCache) singleFlight(rawQuery []byte, resolveFn func() ([]byte, error
 		if call.err != nil {
 			return nil, false, call.err
 		}
-		// Try reading from cache after flight completes
+
 		if cachedResp, hit, _ := c.get(rawQuery); hit {
 			return cachedResp, true, nil
 		}
-		// If not in cache, patch ID on returned flight value
+
 		if len(call.val) >= 2 {
 			res := make([]byte, len(call.val))
 			copy(res, call.val)

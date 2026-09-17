@@ -1,3 +1,16 @@
+// engine_config.go manages dynamic configuration and runtime control knobs for the
+// Engine instance, exposing gomobile-compatible setters called from Android Kotlin.
+//
+// Key Configuration Responsibilities:
+// - Upstream DNS endpoints (Plain, DoH, DoT, DoQ), fallbacks, and block response types
+//   (CUSTOM_IP 0.0.0.0, NXDOMAIN, REFUSED).
+// - PolicyEngine rule snapshots and CNAME rewrite mappings.
+// - Android UI event callback bridges (LogCallback, BatchLogCallback, RaceLogCallback,
+//   BootstrapLogCallback, HttpLogCallback, TrafficCallback).
+// - Screen state adaptive tick intervals (e.g., 1000ms interactive vs 10000ms screen-off)
+//   which conserve battery while maintaining continuous atomic byte/packet accounting.
+// - Outbound proxy session configuration and domain checker bindings.
+
 package tunnel
 
 import (
@@ -6,32 +19,24 @@ import (
 	"time"
 )
 
-// ClearDNSCache removes all entries from the in-memory DNS cache.
 func (e *Engine) ClearDNSCache() {
 	if e.dnsCache != nil {
 		e.dnsCache.clear()
 	}
 }
 
-// GetRouter returns the engine's Router for setting outbound adapters.
 func (e *Engine) GetRouter() *Router {
 	return e.router
 }
 
-// SetOutboundAdapter sets the active outbound adapter on the router.
-// Pass nil to switch to DNS-only mode (no proxy).
 func (e *Engine) SetOutboundAdapter(adapter OutboundAdapter) {
 	e.router.SetAdapter(adapter)
 }
 
-// SetDomainChecker sets the Kotlin-side domain checker.
-// This is called before Start() to provide the blocking logic for rules not in the trie (like Custom Rules).
 func (e *Engine) SetDomainChecker(checker DomainChecker) {
 	e.domainChecker = checker
 }
 
-// ApplyRuleSnapshot updates the Go-side policy engine rules from a JSON snapshot.
-// Returns an error message string, or empty string on success.
 func (e *Engine) ApplyRuleSnapshot(jsonSnapshot string) string {
 	e.mu.Lock()
 	if e.policyEngine == nil {
@@ -50,9 +55,6 @@ func (e *Engine) ApplyRuleSnapshot(jsonSnapshot string) string {
 
 func (e *Engine) SetFilterDNS(enabled bool) { e.filterDNS.Store(enabled) }
 
-// SetRewriteRules replaces the CNAME rewrite map used by DNS and HTTP(S).
-// The input is a JSON object whose keys are source domains and values are
-// target domains. Parent-domain rules also match subdomains.
 func (e *Engine) SetRewriteRules(content string) {
 	rules := make(map[string]string)
 	if content != "" {
@@ -91,29 +93,22 @@ func (e *Engine) rewriteTarget(domain string) string {
 	return ""
 }
 
-// SetFirewallChecker sets the Kotlin-side firewall checker.
-// This is called before Start() to enable per-app DNS blocking.
 func (e *Engine) SetFirewallChecker(checker FirewallChecker) {
 	e.firewallChecker = checker
 }
 
-// SetAppResolver sets the Kotlin-side app name resolver for logging who made the request.
 func (e *Engine) SetAppResolver(resolver AppResolver) {
 	e.appResolver = resolver
 }
 
-// SetAppUidResolver sets the Kotlin-side UID→package resolver used for
-// full-tunnel per-app DNS attribution and connection logging.
 func (e *Engine) SetAppUidResolver(resolver AppUidResolver) {
 	e.appUidResolver = resolver
 }
 
-// SetLogCallback sets the callback for DNS query events.
 func (e *Engine) SetLogCallback(cb LogCallback) {
 	e.logCallback = cb
 }
 
-// SetBatchLogCallback sets the callback for batched DNS and connection query events.
 func (e *Engine) SetBatchLogCallback(cb BatchLogCallback) {
 	e.batchLogCallback = cb
 	if e.logAggregator != nil {
@@ -124,7 +119,6 @@ func (e *Engine) SetBatchLogCallback(cb BatchLogCallback) {
 	}
 }
 
-// SetRaceLogCallback sets the callback for DNS race events.
 func (e *Engine) SetRaceLogCallback(cb RaceLogCallback) {
 	e.mu.Lock()
 	e.raceLogCallback = cb
@@ -135,7 +129,6 @@ func (e *Engine) SetRaceLogCallback(cb RaceLogCallback) {
 	}
 }
 
-// SetBootstrapLogCallback sets the callback for Bootstrap DNS events.
 func (e *Engine) SetBootstrapLogCallback(cb BootstrapLogCallback) {
 	e.mu.Lock()
 	e.bootstrapLogCallback = cb
@@ -146,7 +139,6 @@ func (e *Engine) SetBootstrapLogCallback(cb BootstrapLogCallback) {
 	}
 }
 
-// ResetBootstrapStats clears health statistics and host cache in the bootstrap resolver.
 func (e *Engine) ResetBootstrapStats() {
 	e.mu.Lock()
 	resolver := e.resolver
@@ -156,8 +148,6 @@ func (e *Engine) ResetBootstrapStats() {
 	}
 }
 
-// SetHttpLogCallback registers the Kotlin persistence bridge for inspected
-// HTTP(S) request metadata.
 func (e *Engine) SetHttpLogCallback(cb HttpLogCallback) {
 	e.httpLogCallback = cb
 }
@@ -166,7 +156,6 @@ func (e *Engine) SetOutboundProxyStatusCallback(cb OutboundProxyStatusCallback) 
 	e.outboundStatusCallback = cb
 }
 
-// SetTrafficCallback registers the Kotlin callback for periodic traffic statistics deltas.
 func (e *Engine) SetTrafficCallback(cb TrafficCallback) {
 	e.trafficCallback = cb
 	if e.trafficTracker != nil {
@@ -174,19 +163,12 @@ func (e *Engine) SetTrafficCallback(cb TrafficCallback) {
 	}
 }
 
-// SetTickIntervalMs sets the periodic traffic-statistics tick interval in
-// milliseconds (gomobile-bound; Kotlin drives it from screen state:
-// 1000ms while interactive, 10000ms with the screen off). Deltas keep
-// accumulating in per-UID atomics regardless of the interval, so totals
-// are conserved; only reporting cadence changes.
 func (e *Engine) SetTickIntervalMs(ms int64) {
 	if e.trafficTracker != nil {
 		e.trafficTracker.SetTickInterval(time.Duration(ms) * time.Millisecond)
 	}
 }
 
-// ConfigureOutboundProxy validates and stores a session snapshot. An empty
-// return value means success; a non-empty value is safe to display to users.
 func (e *Engine) ConfigureOutboundProxy(configJSON string) string {
 	cfg, err := parseOutboundProxyConfig(configJSON)
 	if err != nil {
@@ -204,11 +186,6 @@ func (e *Engine) reportOutboundStatus(state, message string) {
 	}
 }
 
-// SetDNS configures the DNS settings.
-// protocol: "PLAIN", "DOH", "DOT", "DOQ"
-// primary: primary DNS server (e.g., "8.8.8.8")
-// fallback: fallback DNS server (e.g., "1.1.1.1"), can be empty
-// dohURL: DoH/DoQ server URL (e.g., "https://dns.cloudflare.com/dns-query")
 func (e *Engine) SetDNS(protocol, primary, fallback, dohURL string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -221,8 +198,6 @@ func (e *Engine) SetDNS(protocol, primary, fallback, dohURL string) {
 	}
 }
 
-// SetBlockResponseType sets how blocked domains are responded to.
-// responseType: "CUSTOM_IP" (0.0.0.0), "NXDOMAIN", "REFUSED"
 func (e *Engine) SetBlockResponseType(responseType string) {
 	e.responseType = ParseResponseType(responseType)
 }

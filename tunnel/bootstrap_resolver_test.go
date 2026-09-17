@@ -1,3 +1,6 @@
+// bootstrap_resolver_test.go provides unit tests for bootstrap resolver logic,
+// validating endpoint racing, health score decay, consecutive failure handling, and system resolver fallback.
+
 package tunnel
 
 import (
@@ -55,13 +58,11 @@ func TestBootstrapIPHealthScoring(t *testing.T) {
 	now := time.Now()
 	entry := bootstrapIPConfig{ID: "ip1", Name: "Test 1", IP: "1.1.1.1"}
 
-	// Initial score
 	initialScore := health.GetScore(entry, now)
 	if initialScore.weight != 1.0 {
 		t.Fatalf("expected initial weight 1.0, got %f", initialScore.weight)
 	}
 
-	// Record fast success (10ms)
 	for i := 0; i < 5; i++ {
 		health.RecordResult(true, 10, now)
 	}
@@ -70,7 +71,6 @@ func TestBootstrapIPHealthScoring(t *testing.T) {
 		t.Fatalf("expected weight > 1.0 for fast responses, got %f", fastScore.weight)
 	}
 
-	// Record consecutive failures
 	health.RecordResult(false, 3000, now)
 	health.RecordResult(false, 3000, now)
 	health.RecordResult(false, 3000, now)

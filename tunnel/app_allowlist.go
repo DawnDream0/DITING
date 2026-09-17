@@ -1,3 +1,11 @@
+// app_allowlist.go implements per-UID domain authorization caching for strict application allowlist mode.
+//
+// Key Behaviors:
+// - Authorization Lifetime: Destinations are usable only while their DNS TTL remains valid for the resolving app UID.
+// - System Resolver Handling: Evaluates queries against all restricted UIDs to handle Android netd system
+//   resolver queries dispatched under netd UID or UIDUnknown on behalf of client apps.
+// - Expiration Pruning: Cached IP mappings are pruned automatically when size exceeds thresholds.
+
 package tunnel
 
 import (
@@ -11,17 +19,12 @@ import (
 	"github.com/miekg/dns"
 )
 
-// appAllowlist keeps the per-UID DNS authorization cache used by the strict
-// application allowlist mode. A destination is usable only while its DNS TTL
-// remains valid for the application that resolved it.
 type appAllowlist struct {
 	mu      sync.RWMutex
 	domains map[int]map[string]struct{}
 	ips     map[int]map[string]time.Time
 }
 
-// SetAppAllowlist updates per-UID domain allowlists using JSON formatted as:
-// {"10001": ["example.com", "sub.example.com"], "10002": ["github.com"]}
 func (e *Engine) SetAppAllowlist(rulesJSON string) {
 	rules := make(map[int]map[string]struct{})
 	if strings.TrimSpace(rulesJSON) != "" {
@@ -100,10 +103,6 @@ func (e *Engine) rememberAppAllowlistResponse(uid int, response *dns.Msg) {
 	e.appAllowlist.mu.Lock()
 	defer e.appAllowlist.mu.Unlock()
 
-	// Find all restricted UIDs that allow this domain:
-	// 1. If incoming query was from a specific restricted UID, check if it allows qname.
-	// 2. Also check all other restricted UIDs because Android's system resolver (netd)
-	// often sends queries with netd's UID or UIDUnknown on behalf of apps.
 	targetUIDs := make([]int, 0, 2)
 	for targetUID, allowed := range e.appAllowlist.domains {
 		if qname != "" && domainMatches(allowed, qname) {

@@ -1,3 +1,10 @@
+// tcp_stack_handlers.go provides default protected TCP and UDP flow forwarders for the userspace stack.
+//
+// Socket Protection & Streaming:
+// - Routing Loop Prevention: Uses protectedControl to invoke Android VpnService.protect() before dial out.
+// - TCP Half-Close: bidiCopyFlow supports half-close so EOF in one direction does not prematurely terminate reverse traffic.
+// - UDP Deadlines: relayUDPFlow enforces rolling idle deadlines to prevent permanent goroutine and file descriptor leaks.
+
 package tunnel
 
 import (
@@ -11,17 +18,10 @@ import (
 	"github.com/xjasonlyu/tun2socks/v2/core/adapter"
 )
 
-// Default flow handlers for TcpIpStack: each terminated TCP/UDP flow is
-// dialed out to the real destination via a socket-protected dialer (so the
-// socket doesn't loop back into the VPN) and bytes are relayed.
-
 const (
 	flowDialTimeout = 10 * time.Second
 )
 
-// newProtectedTcpHandler returns a TcpFlowHandler that forwards the
-// TCP flow to its real destination with socket protection. protectFn
-// may be nil in standalone / non-VPN scenarios.
 func newProtectedTcpHandler(uidr UIDResolver, protectFn func(fd int) bool) TcpFlowHandler {
 	return func(conn adapter.TCPConn) {
 		defer conn.Close()
@@ -48,18 +48,10 @@ func newProtectedTcpHandler(uidr UIDResolver, protectFn func(fd int) bool) TcpFl
 
 		logf("[TcpStack] TCP uid=%d %s ↔ %s", uid, flow.appIP, dst)
 
-		// No absolute deadline — rely on tun2socks' TCP keepalive
-		// (60s idle / 30s interval / 9 probes) to clean up stuck
-		// connections. Hard deadlines killed long-lived streams.
 		bidiCopyFlow(conn, remote)
 	}
 }
 
-// newProtectedUdpHandler returns a UdpFlowHandler that proxies the UDP flow
-// directly to its destination: it reads inbound datagrams from the stack,
-// forwards them to the real server, and writes responses back. QUIC (UDP 443)
-// may need special handling later (per-app blocking or DTLS termination); for
-// now everything is forwarded.
 func newProtectedUdpHandler(uidr UIDResolver, protectFn func(fd int) bool) UdpFlowHandler {
 	return func(conn adapter.UDPConn) {
 		defer conn.Close()
@@ -89,10 +81,6 @@ func newProtectedUdpHandler(uidr UIDResolver, protectFn func(fd int) bool) UdpFl
 	}
 }
 
-// protectedControl returns a net.Dialer.Control function that invokes
-// the VpnService.protect() fd callback before the outbound connection
-// is established, ensuring the socket doesn't itself get routed back
-// into the VPN. Returns nil when protectFn is nil (standalone mode).
 func protectedControl(protectFn func(fd int) bool) func(network, address string, c syscall.RawConn) error {
 	if protectFn == nil {
 		return nil
@@ -104,10 +92,6 @@ func protectedControl(protectFn func(fd int) bool) func(network, address string,
 	}
 }
 
-// bidiCopyFlow copies bytes in both directions between two net.Conns and
-// returns when both directions have finished. Uses TCP half-close semantics
-// where available so a FIN on one direction does not abort the opposite
-// direction mid-stream.
 func bidiCopyFlow(a, b net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -139,11 +123,6 @@ var udpBufPool = sync.Pool{
 	},
 }
 
-// relayUDPFlow relays datagrams bidirectionally between two UDP net.Conns.
-// Unlike TCP streams, UDP datagrams have no FIN or EOF semantics; without an
-// idle read deadline, io.Copy blocks forever, permanently leaking goroutines
-// and file descriptors. relayUDPFlow applies a rolling idle deadline on each
-// read/write and explicitly terminates both sides when idle or errored.
 func relayUDPFlow(a, b net.Conn) {
 	done := make(chan struct{}, 2)
 

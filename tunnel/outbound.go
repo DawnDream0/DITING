@@ -1,3 +1,10 @@
+// outbound.go defines the pluggable OutboundAdapter interface and Router for routing non-DNS traffic.
+//
+// Routing Architecture:
+// - OutboundAdapter abstracts proxy protocols operating at L3 (raw IP packet routing) or L4 (stream-based).
+// - Router manages the active adapter, dispatches non-DNS IP packets from the TUN interface,
+//   and provides fallback handling when no adapter is configured (DNS-only mode).
+
 package tunnel
 
 import (
@@ -5,37 +12,18 @@ import (
 	"sync"
 )
 
-// OutboundAdapter — the pluggable interface for routing non-DNS traffic.
-
-// OutboundAdapter is the interface every proxy protocol must implement.
 type OutboundAdapter interface {
-	// Name returns a human-readable name for logging.
 	Name() string
 
-	// Start initializes the adapter and makes it ready to accept traffic.
-	// Called once when the adapter is activated.
 	Start() error
 
-	// Stop shuts down the adapter and releases all resources.
 	Stop()
 
-	// HandlePacket receives a raw IP packet (L3) for outbound routing.
-	// L3 adapters forward this to their tunnel device.
-	// L4 adapters may ignore this (the Router uses netstack to convert
-	// packets into streams before handing them to the L4 adapter).
 	HandlePacket(packet []byte, length int)
 
-	// SupportsStreams returns true if this adapter operates at Layer 4.
-	// When true, the Router will insert a user-space network stack (e.g.,
-	// gVisor netstack) between the TUN reader and this adapter, converting
-	// raw IP packets into net.Conn (TCP) and net.PacketConn (UDP) streams.
 	SupportsStreams() bool
 }
 
-// Router — dispatches non-DNS packets to the active OutboundAdapter.
-
-// Router manages the active outbound adapter and dispatches traffic to it.
-// It also holds the TUN file for writing responses back to the device.
 type Router struct {
 	mu      sync.RWMutex
 	adapter OutboundAdapter
@@ -43,13 +31,10 @@ type Router struct {
 	running bool
 }
 
-// NewRouter creates a new Router.
 func NewRouter() *Router {
 	return &Router{}
 }
 
-// SetAdapter switches the active outbound adapter.
-// If an adapter was already active, it is stopped first.
 func (r *Router) SetAdapter(adapter OutboundAdapter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -67,22 +52,18 @@ func (r *Router) SetAdapter(adapter OutboundAdapter) {
 	}
 }
 
-// GetAdapter returns the current active adapter (nil if none).
 func (r *Router) GetAdapter() OutboundAdapter {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.adapter
 }
 
-// SetTunFile sets the TUN file descriptor for writing responses back.
 func (r *Router) SetTunFile(f *os.File) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tunFile = f
 }
 
-// RoutePacket dispatches a non-DNS IP packet to the active outbound adapter.
-// If no adapter is active (DNS-only mode), the packet is silently dropped.
 func (r *Router) RoutePacket(packet []byte, length int) {
 	r.mu.RLock()
 	adapter := r.adapter
@@ -93,7 +74,7 @@ func (r *Router) RoutePacket(packet []byte, length int) {
 	}
 
 	if adapter.SupportsStreams() {
-		// FUTURE: feed through gVisor netstack (tun2socks / netstack insertion point).
+
 		logf("Router: L4 adapter '%s' received packet but netstack not yet implemented", adapter.Name())
 		return
 	}
@@ -101,7 +82,6 @@ func (r *Router) RoutePacket(packet []byte, length int) {
 	adapter.HandlePacket(packet, length)
 }
 
-// WriteToTun writes a packet back to the TUN device.
 func (r *Router) WriteToTun(data []byte) {
 	r.mu.RLock()
 	f := r.tunFile
@@ -115,7 +95,6 @@ func (r *Router) WriteToTun(data []byte) {
 	}
 }
 
-// Stop shuts down the router and its active adapter.
 func (r *Router) Stop() {
 	r.mu.Lock()
 	defer r.mu.Unlock()

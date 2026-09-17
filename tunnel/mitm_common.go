@@ -1,3 +1,10 @@
+// mitm_common.go defines shared data structures, interfaces, and HTTP utility functions for MITM interception.
+//
+// Core Interfaces & Filtering Helpers:
+// - adBlockChecker: Abstraction allowing the MITM handler to query the engine's trie and resolve domain IPs.
+// - requestAcceptsHTML: Inspects client Accept headers to conditionally strip Accept-Encoding, allowing HTML responses
+//   to arrive uncompressed for streaming cosmetic CSS tag injection.
+
 package tunnel
 
 import (
@@ -12,40 +19,23 @@ import (
 	"time"
 )
 
-// mitm_common.go — helpers shared between the userspace-stack MITM
-// handler (mitm_handler.go) and alternative flow paths.
-
 const (
-	dialTimeout     = 5 * time.Second  // Short — fail fast on Android mobile networks.
+	dialTimeout     = 5 * time.Second
 	idleTimeout     = 30 * time.Second
 	maxConnLifetime = 3 * time.Minute
 )
 
-// adBlockChecker is the interface the MITM handler uses to query the
-// ad-block engine. The Engine implements this (IsDomainBlocked via the
-// Trie, lookupIP via the configured resolver).
 type adBlockChecker interface {
 	IsDomainBlocked(host string) bool
 	lookupIP(host string) (net.IP, error)
 	domainForIP(ip net.IP) string
 }
 
-// requestAcceptsHTML returns true when the request's Accept header
-// explicitly includes text/html — i.e., the client is requesting an
-// HTML document, not a subresource. Used to decide when to strip
-// Accept-Encoding so responses arrive uncompressed for injection.
 func requestAcceptsHTML(req *http.Request) bool {
 	accept := req.Header.Get("Accept")
 	return strings.Contains(strings.ToLower(accept), "text/html")
 }
 
-// wrapResponseForInjection prepares an HTML response for in-stream
-// <link> injection: decompresses gzip/deflate so the injector can find
-// <head in plaintext, strips Content-Security-Policy (which would block
-// the injected local.pwhs.app <link>), and clears framing headers so Go
-// re-emits the body as chunked plaintext. Undecodable encodings (brotli,
-// compress, ...) are left untouched — injection is skipped, the page
-// still renders, just without cosmetic filtering.
 func wrapResponseForInjection(resp *http.Response) {
 	encoding := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
 
@@ -60,9 +50,7 @@ func wrapResponseForInjection(resp *http.Response) {
 		}
 		bodyReader = gr
 	case "deflate":
-		// Content-Encoding: deflate is ambiguous — some servers send
-		// zlib-wrapped (RFC 1950), others raw DEFLATE (RFC 1951). Try
-		// zlib first; buffer the body so we can re-read on fallback.
+
 		raw, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return
@@ -87,10 +75,6 @@ func wrapResponseForInjection(resp *http.Response) {
 	resp.Uncompressed = true
 }
 
-// isLoopbackOrInternal returns true if the hostname is a literal
-// loopback or private/internal IP address. Prevents the MITM handler
-// from intercepting LAN services (router admin UIs, local printers)
-// that typically have self-signed or no TLS certs.
 func isLoopbackOrInternal(hostname string) bool {
 	lower := strings.ToLower(hostname)
 	if lower == "localhost" || lower == "0.0.0.0" || lower == "::" {
@@ -105,7 +89,6 @@ func isLoopbackOrInternal(hostname string) bool {
 	return ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || isPrivateIP(ip)
 }
 
-// isPrivateIP checks if an IP is in RFC 1918 private ranges.
 func isPrivateIP(ip net.IP) bool {
 	privateRanges := []string{
 		"10.0.0.0/8",
