@@ -1,11 +1,8 @@
 package com.haoze.dnssr.vpn
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.VpnService
-import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.haoze.dnssr.crash.CrashBreadcrumbs
@@ -15,32 +12,19 @@ import com.haoze.dnssr.notification.NotificationSettingsStore
 import com.haoze.dnssr.notification.VpnMonitorManager
 import com.haoze.dnssr.notification.VpnNotificationBuilder
 import com.haoze.dnssr.notification.VpnSpeedMonitor
-import com.haoze.dnssr.ui.DnsLogMode
-import com.haoze.dnssr.ui.DnsResolutionMode
 import com.haoze.dnssr.ui.PermissionDisclosureSettings
 import com.haoze.dnssr.ui.settings.AppRulesSettingsStore
 import com.haoze.dnssr.ui.settings.BootstrapDnsSettingsStore
-import com.haoze.dnssr.ui.settings.DnsCacheSettingsStore
 import com.haoze.dnssr.ui.settings.OutboundProxySettingsStore
 import com.haoze.dnssr.ui.settings.ResolutionSettingsStore
 import com.haoze.dnssr.ui.settings.SystemSettingsStore
-import com.haoze.dnssr.vpn.cache.DnsCachePolicy
 import com.haoze.dnssr.vpn.traffic.TrafficStatsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import android.net.ConnectivityManager
-import android.net.LinkProperties
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
-import com.haoze.dnssr.ui.Ipv6Mode
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * VpnService-based unified Go tunnel and full-policy DNS service.
@@ -59,132 +43,23 @@ class DnsVpnService : VpnService() {
     private val dbComponents = DnsVpnDatabaseComponents()
     private val tunnelManager = DnsVpnTunnelManager()
     private val ruleSyncManager = DnsVpnRuleSyncManager()
+    private val powerOptimizer = DnsVpnPowerOptimizer(this) { tunnelManager.goInspectionTunnel }
+    private val networkMonitor = DnsVpnNetworkMonitor(this)
+    private val configManager = DnsVpnRuntimeConfigManager(
+        context = this,
+        scope = serviceScope,
+        refreshMutex = refreshMutex,
+        tunnelManager = tunnelManager,
+        dbComponents = dbComponents,
+        onNotificationRefresh = { refreshForegroundNotification() },
+        onRestartVpn = { restartVpnLocked() }
+    )
+
     private lateinit var floatingLogOverlay: FloatingLogOverlayController
     private lateinit var speedMonitor: VpnSpeedMonitor
 
-    @Volatile
-    private var activeProviders: List<DnsProvider> = emptyList()
-    @Volatile
-    private var activeResolutionMode: DnsResolutionMode = DnsResolutionMode.SINGLE
-    @Volatile
-    private lateinit var activeDnsCachePolicy: DnsCachePolicy
-    @Volatile
-    private var activeDnsLogMode: DnsLogMode = DnsLogMode.OFF
-    @Volatile
-    private var activeLogRetentionDays: Int = 7
-    @Volatile
-    private var activeBlockResponseMode: BlockResponseMode = BlockResponseMode.NXDOMAIN
-    @Volatile
-    private var activeDynamicBlockResponseConfig = DynamicBlockResponseConfig()
-    @Volatile
-    private var activeBootstrapEnabled: Boolean = false
-    @Volatile
-    private var activeBootstrapIps: List<BootstrapIpEntry> = emptyList()
-    @Volatile
-    private var activeDomainRulesEnabled: Boolean = true
-
-    private val dynamicBlockResponseTracker = DynamicBlockResponseTracker()
     private var startIntent: Intent? = null
     private var wasStopped = false
-    private var screenStateReceiverRegistered = false
-
-    private val screenStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                Intent.ACTION_SCREEN_ON -> onScreenStateChanged(interactive = true)
-                Intent.ACTION_SCREEN_OFF -> onScreenStateChanged(interactive = false)
-            }
-        }
-    }
-
-    /**
-     * Screen-state-driven power optimization while the screen is off:
-     * - TrafficStatsManager pauses snapshot publishing (counters keep accumulating);
-     * - the Go traffic-stats tick runs every 1s with the screen on and every
-     *   10s with the screen off, so totals are never lost between aggregations.
-     */
-    private fun onScreenStateChanged(interactive: Boolean) {
-        TrafficStatsManager.setScreenInteractive(interactive)
-        tunnelManager.goInspectionTunnel?.setTrafficTickIntervalMs(
-            if (interactive) TRAFFIC_TICK_INTERVAL_SCREEN_ON_MS else TRAFFIC_TICK_INTERVAL_SCREEN_OFF_MS
-        )
-    }
-
-    private fun registerScreenStateReceiver() {
-        if (!screenStateReceiverRegistered) {
-            val filter = IntentFilter(Intent.ACTION_SCREEN_ON).apply {
-                addAction(Intent.ACTION_SCREEN_OFF)
-            }
-            runCatching { registerReceiver(screenStateReceiver, filter) }
-                .onFailure { Log.w(TAG, "Failed to register screen state receiver", it) }
-            screenStateReceiverRegistered = true
-        }
-        // Re-sync to the current screen state on every VPN start (this also
-        // covers the tunnel rebuild caused by an exclusion-list refresh: a
-        // freshly created Go tracker needs the correct initial tick interval)
-        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        onScreenStateChanged(powerManager?.isInteractive ?: true)
-    }
-
-    private fun unregisterScreenStateReceiver() {
-        if (!screenStateReceiverRegistered) return
-        screenStateReceiverRegistered = false
-        runCatching { unregisterReceiver(screenStateReceiver) }
-    }
-
-    private var physicalNetworkCallback: ConnectivityManager.NetworkCallback? = null
-    private var networkChangeDebounceJob: Job? = null
-
-    private fun registerPhysicalNetworkCallback() {
-        if (physicalNetworkCallback != null) return
-        val cm = getSystemService(ConnectivityManager::class.java) ?: return
-        val request = NetworkRequest.Builder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
-            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
-            .build()
-
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                scheduleIpv6AdaptationCheck("network_available")
-            }
-
-            override fun onLost(network: Network) {
-                scheduleIpv6AdaptationCheck("network_lost")
-            }
-
-            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
-                scheduleIpv6AdaptationCheck("link_properties_changed")
-            }
-
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                scheduleIpv6AdaptationCheck("capabilities_changed")
-            }
-        }
-
-        runCatching {
-            cm.registerNetworkCallback(request, callback)
-            physicalNetworkCallback = callback
-            Log.d(TAG, "Registered physical network callback for dynamic IPv6 adaptation")
-        }.onFailure {
-            Log.w(TAG, "Failed to register physical network callback", it)
-        }
-    }
-
-    private fun unregisterPhysicalNetworkCallback() {
-        networkChangeDebounceJob?.cancel()
-        networkChangeDebounceJob = null
-        val callback = physicalNetworkCallback ?: return
-        physicalNetworkCallback = null
-        val cm = getSystemService(ConnectivityManager::class.java) ?: return
-        runCatching { cm.unregisterNetworkCallback(callback) }
-            .onFailure { Log.w(TAG, "Failed to unregister physical network callback", it) }
-    }
-
-    private fun scheduleIpv6AdaptationCheck(reason: String) {
-        // In AUTO mode, IPv6 is always stably configured on the virtual interface to prevent IPv6 DNS leaks.
-        // Physical network changes do not require disruptive VPN interface reconnections.
-    }
 
     internal fun onOutboundProxyStatus(state: String, message: String) {
         OutboundProxySettingsStore.setOutboundProxyStatus(this, state, message)
@@ -199,23 +74,15 @@ class DnsVpnService : VpnService() {
         speedMonitor = VpnSpeedMonitor(this)
         floatingLogOverlay = FloatingLogOverlayController(this)
 
-        activeLogRetentionDays = SystemSettingsStore.logRetentionDays(this)
-        activeDnsCachePolicy = DnsCacheSettingsStore.getDnsCachePolicy(this)
-        activeResolutionMode = ResolutionSettingsStore.getDnsResolutionMode(this)
-        activeDnsLogMode = SystemSettingsStore.getDnsLogMode(this)
-        activeBlockResponseMode = AppRulesSettingsStore.getBlockResponseMode(this)
-        activeDynamicBlockResponseConfig = AppRulesSettingsStore.getDynamicBlockResponseConfig(this)
-        activeBootstrapEnabled = BootstrapDnsSettingsStore.isBootstrapEnabled(this)
-        activeBootstrapIps = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(this)
-        activeDomainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(this)
+        configManager.loadInitialConfig()
 
         dbComponents.initialize(
             context = this,
             scope = serviceScope,
-            activeDnsCachePolicy = activeDnsCachePolicy,
-            activeDnsLogMode = { activeDnsLogMode },
-            activeLogRetentionDays = { activeLogRetentionDays },
-            isDomainRulesEnabled = { activeDomainRulesEnabled },
+            activeDnsCachePolicy = configManager.activeDnsCachePolicy,
+            activeDnsLogMode = { configManager.activeDnsLogMode },
+            activeLogRetentionDays = { configManager.activeLogRetentionDays },
+            isDomainRulesEnabled = { configManager.activeDomainRulesEnabled },
             onBootstrapHealthReset = { tunnelManager.goInspectionTunnel?.resetBootstrapStats() },
             onClearGoDnsCache = { tunnelManager.goInspectionTunnel?.clearDnsCache() }
         )
@@ -247,9 +114,9 @@ class DnsVpnService : VpnService() {
                 }
                 refreshForegroundNotification()
             }
-            ACTION_REFRESH_APP_EXCLUSIONS -> refreshAppExclusions()
-            ACTION_REFRESH_APP_ALLOWLIST -> refreshAppAllowlist()
-            ACTION_REFRESH_RUNTIME_CONFIG -> refreshRuntimeConfig(
+            ACTION_REFRESH_APP_EXCLUSIONS -> configManager.refreshAppExclusions()
+            ACTION_REFRESH_APP_ALLOWLIST -> configManager.refreshAppAllowlist()
+            ACTION_REFRESH_RUNTIME_CONFIG -> configManager.refreshRuntimeConfig(
                 intent.getStringExtra(EXTRA_REFRESH_REASON) ?: "runtime_config"
             )
             ACTION_REFRESH_FLOATING_LOG -> floatingLogOverlay.refreshSettings()
@@ -298,10 +165,10 @@ class DnsVpnService : VpnService() {
         startIntent = intent
         DnsVpnStatusNotifier.setRunningFlag(this, true)
 
-        activeResolutionMode = ResolutionSettingsStore.getDnsResolutionMode(this)
-        CrashBreadcrumbs.record("VPN", "VPN starting, mode=${activeResolutionMode.name}")
+        configManager.activeResolutionMode = ResolutionSettingsStore.getDnsResolutionMode(this)
+        CrashBreadcrumbs.record("VPN", "VPN starting, mode=${configManager.activeResolutionMode.name}")
         val providers = DnsVpnProviderResolver.resolveDnsProviders(this, intent)
-        activeProviders = providers
+        configManager.activeProviders = providers
 
         val inspectionConfigured = AppRulesSettingsStore.isHttpInspectionEnabled(this) &&
             AppRulesSettingsStore.getHttpInspectionAppPackages(this).isNotEmpty()
@@ -350,18 +217,18 @@ class DnsVpnService : VpnService() {
             return
         }
 
-        activeBootstrapEnabled = BootstrapDnsSettingsStore.isBootstrapEnabled(this)
-        activeBootstrapIps = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(this)
+        configManager.activeBootstrapEnabled = BootstrapDnsSettingsStore.isBootstrapEnabled(this)
+        configManager.activeBootstrapIps = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(this)
         val started = tunnelManager.startTunnel(
             service = this,
             scope = serviceScope,
             providers = providers,
-            resolutionMode = activeResolutionMode,
-            blockResponseMode = activeBlockResponseMode,
-            dynamicBlockResponseConfig = activeDynamicBlockResponseConfig,
-            cachePolicy = activeDnsCachePolicy,
-            bootstrapEnabled = activeBootstrapEnabled,
-            bootstrapIps = activeBootstrapIps,
+            resolutionMode = configManager.activeResolutionMode,
+            blockResponseMode = configManager.activeBlockResponseMode,
+            dynamicBlockResponseConfig = configManager.activeDynamicBlockResponseConfig,
+            cachePolicy = configManager.activeDnsCachePolicy,
+            bootstrapEnabled = configManager.activeBootstrapEnabled,
+            bootstrapIps = configManager.activeBootstrapIps,
             inspectionRequested = inspectionRequested,
             inspectionPackages = activeInspectionPackages,
             blockedPackages = blockedPackages,
@@ -380,11 +247,11 @@ class DnsVpnService : VpnService() {
         if (SystemSettingsStore.isAppTrafficStatsEnabled(this) || NotificationSettingsStore.isTrafficSpeedEnabled(this)) {
             TrafficStatsManager.start(this, true)
         }
-        registerScreenStateReceiver()
+        powerOptimizer.register()
         runCatching {
             startForeground(
                 VpnNotificationBuilder.NOTIFICATION_ID_VPN_SERVICE,
-                VpnNotificationBuilder.build(this, activeProviders, activeResolutionMode)
+                VpnNotificationBuilder.build(this, configManager.activeProviders, configManager.activeResolutionMode)
             )
         }
         speedMonitor.start(
@@ -395,138 +262,12 @@ class DnsVpnService : VpnService() {
         floatingLogOverlay.setVpnRunning(true)
         VpnMonitorManager.onVpnStarted(this)
         DnsVpnStatusNotifier.sendStatusBroadcast(this, true)
-        registerPhysicalNetworkCallback()
+        networkMonitor.start()
 
         serviceScope.launch {
             dbComponents.rulesInitializationJob?.join()
             if (tunnelManager.vpnInterface != null) {
                 tunnelManager.goInspectionTunnel?.pushRuleSnapshot()
-            }
-        }
-    }
-
-    private fun refreshRuntimeConfig(reason: String) {
-        if (tunnelManager.vpnInterface == null) {
-            Log.d(TAG, "Skip runtime config refresh because VPN is not running: $reason")
-            return
-        }
-
-        serviceScope.launch {
-            refreshMutex.withLock {
-                val oldProviders = activeProviders
-                val newCachePolicy = DnsCacheSettingsStore.getDnsCachePolicy(this@DnsVpnService)
-                val newResolutionMode = ResolutionSettingsStore.getDnsResolutionMode(this@DnsVpnService)
-                val newBootstrapEnabled = BootstrapDnsSettingsStore.isBootstrapEnabled(this@DnsVpnService)
-                val newBootstrapIps = BootstrapDnsSettingsStore.loadEnabledBootstrapIpEntries(this@DnsVpnService)
-                activeDomainRulesEnabled = AppRulesSettingsStore.isDomainRulesEnabled(this@DnsVpnService)
-                activeDnsLogMode = SystemSettingsStore.getDnsLogMode(this@DnsVpnService)
-                activeLogRetentionDays = SystemSettingsStore.logRetentionDays(this@DnsVpnService)
-                val newBlockResponseMode = AppRulesSettingsStore.getBlockResponseMode(this@DnsVpnService)
-                val newDynamicBlockResponseConfig = AppRulesSettingsStore.getDynamicBlockResponseConfig(this@DnsVpnService)
-                val newProviders = runCatching { DnsVpnProviderResolver.resolveDnsProviders(this@DnsVpnService, null) }
-
-                newProviders.fold(
-                    onSuccess = { updatedProviders ->
-                        val goSyncError = tunnelManager.goInspectionTunnel?.let { tunnel ->
-                            runCatching {
-                                tunnel.syncDnsConfig(
-                                    providers = updatedProviders,
-                                    resolutionMode = newResolutionMode,
-                                    blockResponseMode = newBlockResponseMode,
-                                    dynamicBlockResponseConfig = newDynamicBlockResponseConfig,
-                                    cachePolicy = newCachePolicy,
-                                    bootstrapEnabled = newBootstrapEnabled,
-                                    bootstrapIps = newBootstrapIps
-                                )
-                                tunnel.pushRuleSnapshot()
-                            }.exceptionOrNull()
-                        }
-                        activeDnsCachePolicy = newCachePolicy
-                        activeBlockResponseMode = newBlockResponseMode
-                        activeDynamicBlockResponseConfig = newDynamicBlockResponseConfig
-                        activeBootstrapEnabled = newBootstrapEnabled
-                        activeBootstrapIps = newBootstrapIps
-                        dynamicBlockResponseTracker.clear()
-                        dbComponents.dnsCache.updatePolicy(newCachePolicy)
-                        if (goSyncError != null) {
-                            refreshForegroundNotification()
-                            Log.w(TAG, "Failed to refresh Go DNS upstream; keeping current snapshot", goSyncError)
-                            return@fold
-                        }
-                        activeResolutionMode = newResolutionMode
-                        activeProviders = updatedProviders
-                        refreshForegroundNotification()
-                        Log.i(
-                            TAG,
-                            "Runtime config refreshed: $reason, providers=${updatedProviders.size}"
-                        )
-                    },
-                    onFailure = { error ->
-                        runCatching {
-                            tunnelManager.goInspectionTunnel?.syncDnsConfig(
-                                providers = oldProviders,
-                                resolutionMode = activeResolutionMode,
-                                blockResponseMode = newBlockResponseMode,
-                                dynamicBlockResponseConfig = newDynamicBlockResponseConfig,
-                                cachePolicy = newCachePolicy,
-                                bootstrapEnabled = newBootstrapEnabled,
-                                bootstrapIps = newBootstrapIps
-                            )
-                        }.onFailure { syncError ->
-                            Log.w(TAG, "Failed to sync Go DNS response policy", syncError)
-                        }
-                        activeDnsCachePolicy = newCachePolicy
-                        activeResolutionMode = newResolutionMode
-                        activeBlockResponseMode = newBlockResponseMode
-                        activeDynamicBlockResponseConfig = newDynamicBlockResponseConfig
-                        activeBootstrapEnabled = newBootstrapEnabled
-                        activeBootstrapIps = newBootstrapIps
-                        dynamicBlockResponseTracker.clear()
-                        dbComponents.dnsCache.updatePolicy(newCachePolicy)
-                        refreshForegroundNotification()
-                        Log.w(TAG, "Failed to refresh DNS resolvers; keeping current snapshot", error)
-                    }
-                )
-
-                runCatching { dbComponents.blockListManager.refreshCache() }
-                    .onFailure { Log.w(TAG, "Failed to refresh block list cache", it) }
-                runCatching { dbComponents.allowListManager.refreshCache() }
-                    .onFailure { Log.w(TAG, "Failed to refresh allow list cache", it) }
-                runCatching { dbComponents.rewriteRuleManager.refreshCache() }
-                    .onSuccess { tunnelManager.goInspectionTunnel?.updateRewriteRules() }
-                    .onFailure { Log.w(TAG, "Failed to refresh rewrite rule cache", it) }
-                tunnelManager.goInspectionTunnel?.pushRuleSnapshot()
-            }
-        }
-    }
-
-    private fun refreshAppExclusions() {
-        if (tunnelManager.vpnInterface == null) {
-            Log.d(TAG, "Skip application exclusion refresh because VPN is not running")
-            return
-        }
-
-        serviceScope.launch {
-            refreshMutex.withLock {
-                restartVpnLocked()
-            }
-        }
-    }
-
-    private fun refreshAppAllowlist() {
-        if (tunnelManager.vpnInterface == null) {
-            Log.d(TAG, "Skip application allowlist refresh because VPN is not running")
-            return
-        }
-
-        serviceScope.launch {
-            refreshMutex.withLock {
-                val rules = if (AppRulesSettingsStore.isAppAllowlistEnabled(this@DnsVpnService)) {
-                    AppRulesSettingsStore.getAppAllowlistRuleMap(this@DnsVpnService)
-                } else {
-                    emptyMap()
-                }
-                tunnelManager.goInspectionTunnel?.syncAppAllowlist(rules)
             }
         }
     }
@@ -540,7 +281,11 @@ class DnsVpnService : VpnService() {
     private fun refreshForegroundNotification() {
         if (tunnelManager.vpnInterface != null) {
             runCatching {
-                val notification = VpnNotificationBuilder.build(this, activeProviders, activeResolutionMode)
+                val notification = VpnNotificationBuilder.build(
+                    this,
+                    configManager.activeProviders,
+                    configManager.activeResolutionMode
+                )
                 NotificationManagerCompat.from(this).notify(
                     VpnNotificationBuilder.NOTIFICATION_ID_VPN_SERVICE,
                     notification
@@ -554,8 +299,8 @@ class DnsVpnService : VpnService() {
         wasStopped = true
         if (::speedMonitor.isInitialized) speedMonitor.stop()
         if (::floatingLogOverlay.isInitialized) floatingLogOverlay.setVpnRunning(false)
-        unregisterScreenStateReceiver()
-        unregisterPhysicalNetworkCallback()
+        powerOptimizer.unregister()
+        networkMonitor.stop()
         DnsVpnStatusNotifier.setRunningFlag(this, false)
         tunnelManager.disconnectVpnInterface()
         DnsVpnStatusNotifier.sendStatusBroadcast(this, false)
@@ -580,8 +325,8 @@ class DnsVpnService : VpnService() {
         CrashBreadcrumbs.record("VPN", "DnsVpnService onDestroy()")
         if (::speedMonitor.isInitialized) speedMonitor.stop()
         if (::floatingLogOverlay.isInitialized) floatingLogOverlay.destroy()
-        unregisterScreenStateReceiver()
-        unregisterPhysicalNetworkCallback()
+        powerOptimizer.unregister()
+        networkMonitor.stop()
         dbComponents.close()
         isServiceAlive = false
         if (activeService === this) activeService = null
@@ -601,37 +346,33 @@ class DnsVpnService : VpnService() {
 
     companion object {
         private const val TAG = "DnsVpnService"
-        private const val ACTION_STOP = "com.haoze.dnssr.STOP_VPN"
+        const val ACTION_STOP = DnsVpnIntentFactory.ACTION_STOP
+        const val ACTION_REFRESH_APP_EXCLUSIONS = DnsVpnIntentFactory.ACTION_REFRESH_APP_EXCLUSIONS
+        const val ACTION_REFRESH_APP_ALLOWLIST = DnsVpnIntentFactory.ACTION_REFRESH_APP_ALLOWLIST
+        const val ACTION_REFRESH_RUNTIME_CONFIG = DnsVpnIntentFactory.ACTION_REFRESH_RUNTIME_CONFIG
+        const val ACTION_REFRESH_NOTIFICATION = DnsVpnIntentFactory.ACTION_REFRESH_NOTIFICATION
+        const val ACTION_REFRESH_FLOATING_LOG = DnsVpnIntentFactory.ACTION_REFRESH_FLOATING_LOG
+        const val ACTION_FLOATING_LOG_APP_STATE = DnsVpnIntentFactory.ACTION_FLOATING_LOG_APP_STATE
+        const val ACTION_SYNC_RULE = DnsVpnIntentFactory.ACTION_SYNC_RULE
+        const val ACTION_REFRESH_RULE_INDEXES = DnsVpnIntentFactory.ACTION_REFRESH_RULE_INDEXES
+        const val ACTION_SYNC_HTTPS_REQUEST_RULES = DnsVpnIntentFactory.ACTION_SYNC_HTTPS_REQUEST_RULES
+        const val ACTION_VPN_STATUS_CHANGED = DnsVpnIntentFactory.ACTION_VPN_STATUS_CHANGED
 
-        // Go traffic-stats tick period (screen-state driven): slowing down
-        // while the screen is off keeps the CPU from being woken out of deep sleep
-        private const val TRAFFIC_TICK_INTERVAL_SCREEN_ON_MS = 1_000L
-        private const val TRAFFIC_TICK_INTERVAL_SCREEN_OFF_MS = 10_000L
-        private const val ACTION_REFRESH_APP_EXCLUSIONS = "com.haoze.dnssr.REFRESH_APP_EXCLUSIONS"
-        private const val ACTION_REFRESH_APP_ALLOWLIST = "com.haoze.dnssr.REFRESH_APP_ALLOWLIST"
-        private const val ACTION_REFRESH_RUNTIME_CONFIG = "com.haoze.dnssr.REFRESH_RUNTIME_CONFIG"
-        private const val ACTION_REFRESH_NOTIFICATION = "com.haoze.dnssr.notification.REFRESH_NOTIFICATION"
-        private const val ACTION_REFRESH_FLOATING_LOG = "com.haoze.dnssr.REFRESH_FLOATING_LOG"
-        private const val ACTION_FLOATING_LOG_APP_STATE = "com.haoze.dnssr.FLOATING_LOG_APP_STATE"
-        private const val ACTION_SYNC_RULE = "com.haoze.dnssr.SYNC_RULE"
-        private const val ACTION_REFRESH_RULE_INDEXES = "com.haoze.dnssr.REFRESH_RULE_INDEXES"
-        private const val ACTION_SYNC_HTTPS_REQUEST_RULES = "com.haoze.dnssr.SYNC_HTTPS_REQUEST_RULES"
-        const val ACTION_VPN_STATUS_CHANGED = "com.haoze.dnssr.VPN_STATUS_CHANGED"
-        const val EXTRA_VPN_RUNNING = "vpn_running"
-        private const val EXTRA_REFRESH_REASON = "refresh_reason"
-        private const val EXTRA_RULE_TYPE = "rule_type"
-        private const val EXTRA_RULE_PATTERN = "rule_pattern"
-        private const val EXTRA_RULE_SCOPE = "rule_scope"
-        private const val EXTRA_REFRESH_BLOCK = "refresh_block"
-        private const val EXTRA_REFRESH_ALLOW = "refresh_allow"
-        private const val EXTRA_REFRESH_REWRITE = "refresh_rewrite"
-        private const val EXTRA_APP_FOREGROUND = "app_foreground"
+        const val EXTRA_VPN_RUNNING = DnsVpnIntentFactory.EXTRA_VPN_RUNNING
+        const val EXTRA_REFRESH_REASON = DnsVpnIntentFactory.EXTRA_REFRESH_REASON
+        const val EXTRA_RULE_TYPE = DnsVpnIntentFactory.EXTRA_RULE_TYPE
+        const val EXTRA_RULE_PATTERN = DnsVpnIntentFactory.EXTRA_RULE_PATTERN
+        const val EXTRA_RULE_SCOPE = DnsVpnIntentFactory.EXTRA_RULE_SCOPE
+        const val EXTRA_REFRESH_BLOCK = DnsVpnIntentFactory.EXTRA_REFRESH_BLOCK
+        const val EXTRA_REFRESH_ALLOW = DnsVpnIntentFactory.EXTRA_REFRESH_ALLOW
+        const val EXTRA_REFRESH_REWRITE = DnsVpnIntentFactory.EXTRA_REFRESH_REWRITE
+        const val EXTRA_APP_FOREGROUND = DnsVpnIntentFactory.EXTRA_APP_FOREGROUND
 
-        const val EXTRA_DOH_URL = "doh_url"
-        const val EXTRA_DNS_NAME = "dns_name"
-        const val EXTRA_DNS_PROTOCOL = "dns_protocol"
-        const val EXTRA_DNS_HOST = "dns_host"
-        const val EXTRA_DNS_PORT = "dns_port"
+        const val EXTRA_DOH_URL = DnsVpnIntentFactory.EXTRA_DOH_URL
+        const val EXTRA_DNS_NAME = DnsVpnIntentFactory.EXTRA_DNS_NAME
+        const val EXTRA_DNS_PROTOCOL = DnsVpnIntentFactory.EXTRA_DNS_PROTOCOL
+        const val EXTRA_DNS_HOST = DnsVpnIntentFactory.EXTRA_DNS_HOST
+        const val EXTRA_DNS_PORT = DnsVpnIntentFactory.EXTRA_DNS_PORT
 
         @Volatile
         private var isServiceAlive = false
@@ -642,46 +383,21 @@ class DnsVpnService : VpnService() {
         fun startIntent(
             context: Context,
             provider: DnsProvider? = null
-        ): Intent {
-            return Intent(context, DnsVpnService::class.java).apply {
-                provider?.let {
-                    putExtra(EXTRA_DNS_PROTOCOL, it.protocol.name)
-                    if (it.protocol == DnsProtocol.DOH) {
-                        putExtra(EXTRA_DOH_URL, it.url)
-                    } else {
-                        putExtra(EXTRA_DNS_HOST, it.host)
-                        putExtra(EXTRA_DNS_PORT, it.port)
-                    }
-                    putExtra(EXTRA_DNS_NAME, it.name)
-                }
-            }
-        }
+        ): Intent = DnsVpnIntentFactory.startIntent(context, provider)
 
-        fun stopIntent(context: Context): Intent {
-            return Intent(context, DnsVpnService::class.java).setAction(ACTION_STOP)
-        }
+        fun stopIntent(context: Context): Intent = DnsVpnIntentFactory.stopIntent(context)
 
         fun refreshRuntimeConfigIntent(
             context: Context,
             reason: String = "runtime_config"
-        ): Intent {
-            return Intent(context, DnsVpnService::class.java)
-                .setAction(ACTION_REFRESH_RUNTIME_CONFIG)
-                .putExtra(EXTRA_REFRESH_REASON, reason)
-        }
+        ): Intent = DnsVpnIntentFactory.refreshRuntimeConfigIntent(context, reason)
 
         fun syncRuleIntent(
             context: Context,
             ruleType: String,
             pattern: String,
             scope: RuleScope = RuleScope.DNS
-        ): Intent {
-            return Intent(context, DnsVpnService::class.java)
-                .setAction(ACTION_SYNC_RULE)
-                .putExtra(EXTRA_RULE_TYPE, ruleType)
-                .putExtra(EXTRA_RULE_PATTERN, pattern)
-                .putExtra(EXTRA_RULE_SCOPE, scope.storageValue)
-        }
+        ): Intent = DnsVpnIntentFactory.syncRuleIntent(context, ruleType, pattern, scope)
 
         fun refreshRuleIndexesIntent(
             context: Context,
@@ -689,23 +405,22 @@ class DnsVpnService : VpnService() {
             refreshAllow: Boolean,
             refreshRewrite: Boolean,
             scope: RuleScope = RuleScope.DNS
-        ): Intent = Intent(context, DnsVpnService::class.java)
-            .setAction(ACTION_REFRESH_RULE_INDEXES)
-            .putExtra(EXTRA_REFRESH_BLOCK, refreshBlock)
-            .putExtra(EXTRA_REFRESH_ALLOW, refreshAllow)
-            .putExtra(EXTRA_REFRESH_REWRITE, refreshRewrite)
-            .putExtra(EXTRA_RULE_SCOPE, scope.storageValue)
+        ): Intent = DnsVpnIntentFactory.refreshRuleIndexesIntent(
+            context,
+            refreshBlock,
+            refreshAllow,
+            refreshRewrite,
+            scope
+        )
 
         fun syncHttpsRequestRulesIntent(context: Context): Intent =
-            Intent(context, DnsVpnService::class.java).setAction(ACTION_SYNC_HTTPS_REQUEST_RULES)
+            DnsVpnIntentFactory.syncHttpsRequestRulesIntent(context)
 
-        fun refreshAppExclusionsIntent(context: Context): Intent {
-            return Intent(context, DnsVpnService::class.java).setAction(ACTION_REFRESH_APP_EXCLUSIONS)
-        }
+        fun refreshAppExclusionsIntent(context: Context): Intent =
+            DnsVpnIntentFactory.refreshAppExclusionsIntent(context)
 
-        fun refreshAppAllowlistIntent(context: Context): Intent {
-            return Intent(context, DnsVpnService::class.java).setAction(ACTION_REFRESH_APP_ALLOWLIST)
-        }
+        fun refreshAppAllowlistIntent(context: Context): Intent =
+            DnsVpnIntentFactory.refreshAppAllowlistIntent(context)
 
         fun refreshNotification(context: Context) {
             if (isRunning(context)) {
