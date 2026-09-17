@@ -23,10 +23,9 @@ data class AgentApiConfig(
         /**
          * Factory-default model.
          *
-         * Note: the former `deepseek-chat` / `deepseek-reasoner` model aliases were officially retired by
-         * DeepSeek on 2026-07-24 and now return errors; the active models are the V4 series.
+         * Active models are DeepSeek V4.1 series (`deepseek-flash`).
          */
-        const val DEFAULT_MODEL = "deepseek-v4-flash"
+        const val DEFAULT_MODEL = "deepseek-flash"
         const val DEFAULT_TEMPERATURE = 0.7
     }
 }
@@ -69,11 +68,11 @@ object AgentApiPresetStore {
      */
     val BUILTIN_PRESETS: List<ModelPreset> = listOf(
         ModelPreset(
-            id = "builtin_deepseek_v4_flash",
-            name = "DeepSeek V4 Flash",
+            id = "builtin_deepseek_flash",
+            name = "DeepSeek V4.1 Flash",
             baseUrl = "https://api.deepseek.com/v1",
-            model = "deepseek-v4-flash",
-            description = "经济首选，1M 上下文",
+            model = "deepseek-flash",
+            description = "经济首选，1M 上下文，多模态推理",
             builtin = true
         ),
         ModelPreset(
@@ -82,6 +81,14 @@ object AgentApiPresetStore {
             baseUrl = "https://api.deepseek.com/v1",
             model = "deepseek-v4-pro",
             description = "旗舰推理，适合复杂研判",
+            builtin = true
+        ),
+        ModelPreset(
+            id = "builtin_openai_astra",
+            name = "OpenAI GPT-6 Astra",
+            baseUrl = "https://api.openai.com/v1",
+            model = "gpt-6-astra",
+            description = "最新前沿旗舰，复杂推理与智能体",
             builtin = true
         ),
         ModelPreset(
@@ -105,47 +112,20 @@ object AgentApiPresetStore {
             name = "Moonshot Kimi K3",
             baseUrl = "https://api.moonshot.cn/v1",
             model = "kimi-k3",
-            description = "长上下文与工具调用",
+            description = "长上下文与多模态深度推理",
             builtin = true
         )
     )
 
-    /** Candidate suggestions when a model name is typed manually (covers only the active models of the providers used by the built-in presets). */
+    /** Candidate suggestions when a model name is typed manually (covers only the active models of the providers used by the built-in presets). Obsolete models are removed. */
     val MODEL_SUGGESTIONS: List<String> = listOf(
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "deepseek-v4-pro",
+        "gpt-6-astra",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
-        "gpt-5.4-mini",
         "kimi-k3"
     )
-
-    /**
-     * Migration map from legacy model names to their active replacements.
-     * Used on upgrade: when a user still has a retired model name persisted locally, it is silently corrected on read.
-     */
-    val LEGACY_MODEL_MIGRATIONS: Map<String, String> = mapOf(
-        "deepseek-chat" to "deepseek-v4-flash",
-        "deepseek-reasoner" to "deepseek-v4-pro",
-        "deepseek-ai/DeepSeek-V3" to "deepseek-ai/DeepSeek-V4-Flash",
-        "deepseek-ai/DeepSeek-V3.1" to "deepseek-ai/DeepSeek-V4-Flash",
-        "deepseek-ai/DeepSeek-V3.2" to "deepseek-ai/DeepSeek-V4-Flash",
-        "deepseek-ai/DeepSeek-R1" to "deepseek-ai/DeepSeek-V4-Pro",
-        "moonshot-v1-8k" to "kimi-k3",
-        "moonshot-v1-32k" to "kimi-k3",
-        "moonshot-v1-128k" to "kimi-k3",
-        "gpt-4o-mini" to "gpt-5.4-mini",
-        "gpt-4o" to "gpt-5.6-terra",
-        "qwen-plus" to "qwen3.6-27b",
-        "qwen-max" to "qwen3.7-max"
-    )
-
-    /** Maps a legacy model name to the active model name; non-legacy values are returned unchanged. */
-    fun migrateLegacyModelName(model: String): String {
-        val trimmed = model.trim()
-        if (trimmed.isEmpty()) return AgentApiConfig.DEFAULT_MODEL
-        return LEGACY_MODEL_MIGRATIONS[trimmed] ?: trimmed
-    }
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -284,10 +264,7 @@ object AgentApiSettingsStore {
             apiKey = prefs.getString(KEY_AGENT_API_KEY, "").orEmpty(),
             baseUrl = prefs.getString(KEY_AGENT_BASE_URL, AgentApiConfig.DEFAULT_BASE_URL)
                 .takeIf { !it.isNullOrBlank() } ?: AgentApiConfig.DEFAULT_BASE_URL,
-            // Legacy model names (e.g. the retired deepseek-chat) are auto-corrected to the active model on read
-            model = AgentApiPresetStore.migrateLegacyModelName(
-                storedModel ?: AgentApiConfig.DEFAULT_MODEL
-            ),
+            model = storedModel?.takeIf { it.isNotBlank() } ?: AgentApiConfig.DEFAULT_MODEL,
             temperature = prefs.getString(KEY_AGENT_TEMPERATURE, null)?.toDoubleOrNull()
                 ?: AgentApiConfig.DEFAULT_TEMPERATURE,
             systemPrompt = prefs.getString(KEY_AGENT_SYSTEM_PROMPT, "").orEmpty()
