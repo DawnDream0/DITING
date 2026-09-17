@@ -1,4 +1,4 @@
-// bloom.go implements a memory-mapped, read-only probabilistic Bloom filter
+// domain_bloom_filter.go implements a memory-mapped, read-only probabilistic Bloom filter
 // designed to eliminate trie traversal for ~90%+ of clean DNS queries.
 //
 // File Format (24-byte Header):

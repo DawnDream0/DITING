@@ -1,4 +1,4 @@
-// request_filter.go provides HTTP request-level path and URL-prefix filtering.
+// engine_request_filter.go provides HTTP request-level path and URL-prefix filtering.
 //
 // Rule Resolution:
 // - Request rules take precedence over general domain rules.

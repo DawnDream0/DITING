@@ -1,4 +1,4 @@
-// uid_resolver.go bridges socket 5-tuple ownership lookups to Android's ConnectivityManager.
+// socket_uid_resolver.go bridges socket 5-tuple ownership lookups to Android's ConnectivityManager.
 //
 // SELinux & Direction Inversion:
 // - Android 10+ (API 29+) enforces SELinux restrictions on /proc/net, requiring ConnectivityManager.getConnectionOwnerUid().

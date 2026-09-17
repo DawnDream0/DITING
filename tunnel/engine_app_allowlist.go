@@ -1,4 +1,4 @@
-// app_allowlist.go implements per-UID domain authorization caching for strict application allowlist mode.
+// engine_app_allowlist.go implements per-UID domain authorization caching for strict application allowlist mode.
 //
 // Key Behaviors:
 // - Authorization Lifetime: Destinations are usable only while their DNS TTL remains valid for the resolving app UID.

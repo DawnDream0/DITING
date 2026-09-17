@@ -1,4 +1,4 @@
-// packet.go handles raw IP and UDP packet decoding, validation, and DNS response synthesis for TUN traffic.
+// dns_packet.go handles raw IP and UDP packet decoding, validation, and DNS response synthesis for TUN traffic.
 //
 // Packet Construction & Checksum Mechanics:
 // - Parsing: Extracts 5-tuple and DNS wire payloads from IPv4 and IPv6 datagrams.

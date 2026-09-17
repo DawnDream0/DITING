@@ -1,4 +1,4 @@
-// outbound.go defines the pluggable OutboundAdapter interface and Router for routing non-DNS traffic.
+// outbound_router.go defines the pluggable OutboundAdapter interface and Router for routing non-DNS traffic.
 //
 // Routing Architecture:
 // - OutboundAdapter abstracts proxy protocols operating at L3 (raw IP packet routing) or L4 (stream-based).

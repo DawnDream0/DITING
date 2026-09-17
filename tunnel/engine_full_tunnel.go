@@ -1,4 +1,4 @@
-// fulltunnel.go implements the high-throughput full-network data plane for HTTPS filtering.
+// engine_full_tunnel.go implements the high-throughput full-network data plane for HTTPS filtering.
 //
 // Architecture & Deadlock Elimination:
 // - Direct TUN Inbound: gVisor reads the TUN device directly to eliminate intermediate packet queue backpressure deadlocks.

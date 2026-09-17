@@ -1,4 +1,4 @@
-// trie.go implements MmapTrie, a memory-mapped, read-only reversed-label domain trie.
+// domain_trie.go implements MmapTrie, a memory-mapped, read-only reversed-label domain trie.
 //
 // Data Structure & Matching:
 // - File Magic: 0x54524945 ("TRIE")

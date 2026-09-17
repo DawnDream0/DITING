@@ -1,4 +1,4 @@
-// mitm_inject.go provides streaming HTML rewriting for cosmetic ad-blocking CSS injection.
+// mitm_cosmetic_inject.go provides streaming HTML rewriting for cosmetic ad-blocking CSS injection.
 //
 // Injection Architecture:
 // - Scans the uncompressed response stream for <head> tags (case-insensitive) using a sliding buffer.

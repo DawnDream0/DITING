@@ -1,4 +1,4 @@
-// conn_log.go provides full-tunnel per-app traffic attribution and connection logging.
+// engine_connection_log.go provides full-tunnel per-app traffic attribution and connection logging.
 //
 // Key Mechanisms:
 // - Flow Attribution: In full-tunnel mode, the stack extracts the 5-tuple and queries the UID resolver

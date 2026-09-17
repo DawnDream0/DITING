@@ -1,4 +1,4 @@
-// mitm_ca.go implements the dynamic certificate authority (CertManager) for on-the-fly leaf certificate generation.
+// mitm_cert_manager.go implements the dynamic certificate authority (CertManager) for on-the-fly leaf certificate generation.
 //
 // Certificate Minting & Caching:
 // - Root CA: Generates or loads RSA/ECDSA root CA credentials ("PWHS Local CA") stored on persistent storage.

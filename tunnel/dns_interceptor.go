@@ -1,4 +1,4 @@
-// interceptor.go implements DnsInterceptor, reading raw packets from the TUN device and separating DNS from non-DNS traffic.
+// dns_interceptor.go implements DnsInterceptor, reading raw packets from the TUN device and separating DNS from non-DNS traffic.
 //
 // Traffic Demultiplexing:
 // - UDP destination port 53 queries are dispatched to the ad-block DNS engine.

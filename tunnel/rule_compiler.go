@@ -1,4 +1,4 @@
-// compiler.go provides the on-device filter compiler that parses raw blocklists
+// rule_compiler.go provides the on-device filter compiler that parses raw blocklists
 // and compiles them into binary .trie and .bloom files compatible with MmapTrie and BloomFilter.
 //
 // Compilation Pipeline:
