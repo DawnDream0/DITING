@@ -1,546 +1,222 @@
 package com.haoze.dnssr.vpn
 
-import android.util.Log
-import com.haoze.dnssr.util.forEachKeysetPage
 import com.haoze.dnssr.data.dao.AllowRuleDao
 import com.haoze.dnssr.data.entity.RuleScope
 import java.io.File
 
 /**
- * In-memory cache of allowlist rules.
+ * In-memory cache of allowlist rules, backed by an optional mmap index.
  *
  * Matching semantics are identical to the block rules: exact match or parent
  * domain suffix match.
  */
-data class InvertedAllowRule(
-    val pattern: String,
-    val important: Boolean,
-    val excludedApps: Set<String>,
-    val wildcard: AdGuardRuleParser.WildcardPattern? = null
-)
-
-data class AllowAppRuleBucket(
-    val exactRules: Set<String> = emptySet(),
-    val importantExactRules: Set<String> = emptySet(),
-    val wildcardRules: List<AdGuardRuleParser.WildcardPattern> = emptyList(),
-    val importantWildcardRules: List<AdGuardRuleParser.WildcardPattern> = emptyList()
-) {
-    fun isEmpty(): Boolean = exactRules.isEmpty() && importantExactRules.isEmpty() &&
-        wildcardRules.isEmpty() && importantWildcardRules.isEmpty()
-}
-
 class AllowRuleCache(
     private val indexFile: File? = null,
     private val importantIndexFile: File? = null
 ) {
 
     @Volatile
-    private var customRules: Set<String> = emptySet()
-    @Volatile
-    private var importantCustomRules: Set<String> = emptySet()
-    @Volatile
-    private var customWildcards: List<AdGuardRuleParser.WildcardPattern> = emptyList()
-    @Volatile
-    private var importantCustomWildcards: List<AdGuardRuleParser.WildcardPattern> = emptyList()
-
-    @Volatile
-    private var customAppBuckets: Map<String, AllowAppRuleBucket> = emptyMap()
-    @Volatile
-    private var invertedCustomRules: List<InvertedAllowRule> = emptyList()
-
-    @Volatile
-    private var subscriptionFallback: Set<String> = emptySet()
-    @Volatile
-    private var importantSubscriptionFallback: Set<String> = emptySet()
-    @Volatile
-    private var subscriptionWildcards: List<AdGuardRuleParser.WildcardPattern> = emptyList()
-    @Volatile
-    private var importantSubscriptionWildcards: List<AdGuardRuleParser.WildcardPattern> = emptyList()
-
-    @Volatile
-    private var subscriptionAppBuckets: Map<String, AllowAppRuleBucket> = emptyMap()
-    @Volatile
-    private var invertedSubscriptionRules: List<InvertedAllowRule> = emptyList()
-
-    @Volatile
-    private var subscriptionOverrides: Map<String, String?> = emptyMap()
-    @Volatile
-    private var subscriptionIndex: MappedSubscriptionRuleIndex? = null
-    @Volatile
-    private var importantSubscriptionIndex: MappedSubscriptionRuleIndex? = null
+    private var state = AllowRuleCacheState()
 
     suspend fun reload(
         dao: AllowRuleDao,
         scope: RuleScope = RuleScope.DNS,
         forceRebuild: Boolean = false
     ) {
-        val customRuleEntries = dao.enabledCustomRules()
-
-        val custom = HashSet<String>()
-        val importantCustom = HashSet<String>()
-        val customWc = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-        val importantCustomWc = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-        val customBucketsMap = HashMap<String, MutableAllowAppBucket>()
-        val customInvertedList = mutableListOf<InvertedAllowRule>()
-
-        for (entry in customRuleEntries) {
-            val isWc = entry.isWildcard || entry.pattern.contains('*')
-            val wcPattern = if (isWc) AdGuardRuleParser.WildcardPattern(entry.pattern) else null
-
-            if (entry.appInverted && !entry.appScope.isNullOrEmpty()) {
-                val excluded = entry.appScope.split('|').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
-                customInvertedList.add(InvertedAllowRule(entry.pattern, entry.important, excluded, wcPattern))
-            } else if (!entry.appScope.isNullOrEmpty()) {
-                val pkgs = entry.appScope.split('|').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-                for (pkg in pkgs) {
-                    val bucket = customBucketsMap.getOrPut(pkg) { MutableAllowAppBucket() }
-                    if (isWc && wcPattern != null) {
-                        if (entry.important) bucket.importantWildcards.add(wcPattern)
-                        else bucket.wildcards.add(wcPattern)
-                    } else {
-                        if (entry.important) bucket.importantExact.add(entry.pattern)
-                        else bucket.exact.add(entry.pattern)
-                    }
-                }
-            } else {
-                if (isWc && wcPattern != null) {
-                    if (entry.important) importantCustomWc.add(wcPattern)
-                    else customWc.add(wcPattern)
-                } else {
-                    if (entry.important) importantCustom.add(entry.pattern)
-                    else custom.add(entry.pattern)
-                }
-            }
-        }
-
-        val targetFile = indexFile
-        val importantFile = importantIndexFile
-
-        var mapped = targetFile?.let { file ->
-            if (!forceRebuild && file.exists() && file.length() > 0) {
-                runCatching { MappedSubscriptionRuleIndex.load(file) }
-                    .onFailure { Log.w(TAG, "Existing subscription allow index invalid, will recompile", it) }
-                    .getOrNull()
-            } else null
-        }
-
-        var importantMapped = importantFile?.let { file ->
-            if (!forceRebuild && file.exists() && file.length() > 0) {
-                runCatching { MappedSubscriptionRuleIndex.load(file) }
-                    .onFailure { Log.w(TAG, "Existing important subscription allow index invalid, will recompile", it) }
-                    .getOrNull()
-            } else null
-        }
-
-        if (mapped == null) {
-            mapped = targetFile?.let { file ->
-                runCatching {
-                    MappedSubscriptionRuleIndex.compileAndLoad(file) { consume ->
-                        dao.forEachSubscriptionRulePage { rule ->
-                            if (!rule.important && !rule.isWildcard && !rule.pattern.contains('*') && rule.appScope.isNullOrEmpty() && !rule.appInverted) {
-                                consume(rule)
-                            }
-                        }
-                    }
-                }.onFailure { e ->
-                    Log.e(TAG, "Failed to compile subscription allow index (${file.name})", e)
-                }.getOrNull()
-            }
-        }
-
-        if (importantMapped == null) {
-            importantMapped = importantFile?.let { file ->
-                runCatching {
-                    MappedSubscriptionRuleIndex.compileAndLoad(file) { consume ->
-                        dao.forEachSubscriptionRulePage { rule ->
-                            if (rule.important && !rule.isWildcard && !rule.pattern.contains('*') && rule.appScope.isNullOrEmpty() && !rule.appInverted) {
-                                consume(rule)
-                            }
-                        }
-                    }
-                }.onFailure { e ->
-                    Log.e(TAG, "Failed to compile important subscription allow index (${file.name})", e)
-                }.getOrNull()
-            }
-        }
-
-        val subFallback = HashSet<String>()
-        val importantSubFallback = HashSet<String>()
-        val subWc = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-        val importantSubWc = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-        val subBucketsMap = HashMap<String, MutableAllowAppBucket>()
-        val subInvertedList = mutableListOf<InvertedAllowRule>()
-
-        fun processSubscriptionRule(entry: com.haoze.dnssr.data.dao.EnabledRule) {
-            val isWc = entry.isWildcard || entry.pattern.contains('*')
-            val wcPattern = if (isWc) AdGuardRuleParser.WildcardPattern(entry.pattern) else null
-
-            if (entry.appInverted && !entry.appScope.isNullOrEmpty()) {
-                val excluded = entry.appScope.split('|').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
-                subInvertedList.add(InvertedAllowRule(entry.pattern, entry.important, excluded, wcPattern))
-            } else if (!entry.appScope.isNullOrEmpty()) {
-                val pkgs = entry.appScope.split('|').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-                for (pkg in pkgs) {
-                    val bucket = subBucketsMap.getOrPut(pkg) { MutableAllowAppBucket() }
-                    if (isWc && wcPattern != null) {
-                        if (entry.important) bucket.importantWildcards.add(wcPattern)
-                        else bucket.wildcards.add(wcPattern)
-                    } else {
-                        if (entry.important) bucket.importantExact.add(entry.pattern)
-                        else bucket.exact.add(entry.pattern)
-                    }
-                }
-            } else if (isWc && wcPattern != null) {
-                if (entry.important) importantSubWc.add(wcPattern)
-                else subWc.add(wcPattern)
-            } else {
-                if (entry.important) {
-                    if (importantMapped == null) importantSubFallback.add(entry.pattern)
-                } else {
-                    if (mapped == null) subFallback.add(entry.pattern)
-                }
-            }
-        }
-
-        if (mapped != null && importantMapped != null) {
-            dao.enabledSpecialSubscriptionRules().forEach(::processSubscriptionRule)
-        } else {
-            dao.forEachSubscriptionRulePage(::processSubscriptionRule)
-        }
+        val result = AllowRuleCacheLoader.loadAll(
+            dao = dao,
+            scope = scope,
+            forceRebuild = forceRebuild,
+            indexFile = indexFile,
+            importantIndexFile = importantIndexFile
+        )
 
         val oldIndex: MappedSubscriptionRuleIndex?
         val oldImportantIndex: MappedSubscriptionRuleIndex?
         synchronized(this) {
-            customRules = custom
-            importantCustomRules = importantCustom
-            customWildcards = customWc
-            importantCustomWildcards = importantCustomWc
-            customAppBuckets = customBucketsMap.mapValues { it.value.toImmutable() }
-            invertedCustomRules = customInvertedList
+            oldIndex = state.subscriptionIndex
+            oldImportantIndex = state.importantSubscriptionIndex
 
-            subscriptionFallback = subFallback
-            importantSubscriptionFallback = importantSubFallback
-            subscriptionWildcards = subWc
-            importantSubscriptionWildcards = importantSubWc
-            subscriptionAppBuckets = subBucketsMap.mapValues { it.value.toImmutable() }
-            invertedSubscriptionRules = subInvertedList
-
-            oldIndex = subscriptionIndex
-            subscriptionIndex = mapped
-            oldImportantIndex = importantSubscriptionIndex
-            importantSubscriptionIndex = importantMapped
-            subscriptionOverrides = emptyMap()
+            state = AllowRuleCacheState(
+                customRules = result.customRules,
+                importantCustomRules = result.importantCustomRules,
+                customWildcards = result.customWildcards,
+                importantCustomWildcards = result.importantCustomWildcards,
+                customAppBuckets = result.customAppBuckets,
+                invertedCustomRules = result.invertedCustomRules,
+                subscriptionFallback = result.subscriptionFallback,
+                importantSubscriptionFallback = result.importantSubscriptionFallback,
+                subscriptionWildcards = result.subscriptionWildcards,
+                importantSubscriptionWildcards = result.importantSubscriptionWildcards,
+                subscriptionAppBuckets = result.subscriptionAppBuckets,
+                invertedSubscriptionRules = result.invertedSubscriptionRules,
+                subscriptionOverrides = emptyMap(),
+                subscriptionIndex = result.subscriptionIndex,
+                importantSubscriptionIndex = result.importantSubscriptionIndex
+            )
         }
-        if (oldIndex !== mapped) {
+        if (oldIndex !== result.subscriptionIndex) {
             oldIndex?.close()
         }
-        if (oldImportantIndex !== importantMapped) {
+        if (oldImportantIndex !== result.importantSubscriptionIndex) {
             oldImportantIndex?.close()
         }
     }
 
-    fun isAllowed(qname: String, packageName: String? = null): Boolean {
-        return findMatch(qname, packageName) != null
-    }
+    fun isAllowed(qname: String, packageName: String? = null): Boolean =
+        AllowRuleMatcher.isAllowed(state, qname, packageName)
 
-    fun findMatch(qname: String, packageName: String? = null): String? {
-        return findImportantCustomMatch(qname, packageName)
-            ?: findImportantSubscriptionMatch(qname, packageName)
-            ?: findCustomMatch(qname, packageName)
-            ?: findSubscriptionMatch(qname, packageName)
-    }
+    fun findMatch(qname: String, packageName: String? = null): String? =
+        AllowRuleMatcher.findMatch(state, qname, packageName)
 
     /**
      * Per-app allowlist rule matching (priority 3; covers both important and
      * regular allowlist rules).
      */
-    fun findAppMatch(qname: String, packageName: String): String? {
-        val domain = qname.lowercase().trimEnd('.')
-        if (domain.isEmpty() || packageName.isEmpty()) return null
-
-        findInAppBucket(customAppBuckets, packageName, domain, important = true)?.let { return it }
-        findInAppBucket(customAppBuckets, packageName, domain, important = false)?.let { return it }
-        findInAppBucket(subscriptionAppBuckets, packageName, domain, important = true)?.let { return it }
-        findInAppBucket(subscriptionAppBuckets, packageName, domain, important = false)?.let { return it }
-
-        return null
-    }
+    fun findAppMatch(qname: String, packageName: String): String? =
+        AllowRuleMatcher.findAppMatch(state, qname, packageName)
 
     /**
      * Global allowlist rule matching (priority 4).
      */
-    fun findGlobalMatch(qname: String, packageName: String? = null): String? {
-        val domain = qname.lowercase().trimEnd('.')
-        if (domain.isEmpty()) return null
+    fun findGlobalMatch(qname: String, packageName: String? = null): String? =
+        AllowRuleMatcher.findGlobalMatch(state, qname, packageName)
 
-        findInInvertedRules(invertedCustomRules, domain, important = null, packageName)?.let { return it }
+    fun findCustomMatch(qname: String, packageName: String? = null): String? =
+        AllowRuleMatcher.findCustomMatch(state, qname, packageName)
 
-        findInSet(domain, importantCustomRules)?.let { return it }
-        findInWildcards(domain, importantCustomWildcards)?.let { return it }
-        findInSet(domain, customRules)?.let { return it }
-        findInWildcards(domain, customWildcards)?.let { return it }
+    fun findImportantCustomMatch(qname: String, packageName: String? = null): String? =
+        AllowRuleMatcher.findImportantCustomMatch(state, qname, packageName)
 
-        findInInvertedRules(invertedSubscriptionRules, domain, important = null, packageName)?.let { return it }
+    fun findSubscriptionMatch(qname: String, packageName: String? = null): String? =
+        AllowRuleMatcher.findSubscriptionMatch(state, qname, packageName)
 
-        return findSubscriptionTail(domain, important = true)
-            ?: findSubscriptionTail(domain, important = false)
-    }
-
-    fun findCustomMatch(qname: String, packageName: String? = null): String? {
-        val domain = qname.lowercase().trimEnd('.')
-        if (domain.isEmpty()) return null
-
-        findInAppBucket(customAppBuckets, packageName, domain, important = false)?.let { return it }
-
-        findInInvertedRules(invertedCustomRules, domain, important = false, packageName)?.let { return it }
-
-        return findInSet(domain, customRules) ?: findInWildcards(domain, customWildcards)
-    }
-
-    fun findImportantCustomMatch(qname: String, packageName: String? = null): String? {
-        val domain = qname.lowercase().trimEnd('.')
-        if (domain.isEmpty()) return null
-
-        findInAppBucket(customAppBuckets, packageName, domain, important = true)?.let { return it }
-
-        findInInvertedRules(invertedCustomRules, domain, important = true, packageName)?.let { return it }
-
-        return findInSet(domain, importantCustomRules) ?: findInWildcards(domain, importantCustomWildcards)
-    }
-
-    fun findSubscriptionMatch(qname: String, packageName: String? = null): String? {
-        val domain = qname.lowercase().trimEnd('.')
-        if (domain.isEmpty()) return null
-
-        findInAppBucket(subscriptionAppBuckets, packageName, domain, important = false)?.let { return it }
-
-        findInInvertedRules(invertedSubscriptionRules, domain, important = false, packageName)?.let { return it }
-
-        return findSubscriptionTail(domain, important = false)
-    }
-
-    fun findImportantSubscriptionMatch(qname: String, packageName: String? = null): String? {
-        val domain = qname.lowercase().trimEnd('.')
-        if (domain.isEmpty()) return null
-
-        findInAppBucket(subscriptionAppBuckets, packageName, domain, important = true)?.let { return it }
-
-        findInInvertedRules(invertedSubscriptionRules, domain, important = true, packageName)?.let { return it }
-
-        return findSubscriptionTail(domain, important = true)
-    }
-
-    /** Matches within the given app's rule bucket in exact-then-wildcard order. */
-    private fun findInAppBucket(
-        buckets: Map<String, AllowAppRuleBucket>,
-        packageName: String?,
-        domain: String,
-        important: Boolean
-    ): String? {
-        val bucket = packageName?.let { buckets[it] } ?: return null
-        val exact = if (important) bucket.importantExactRules else bucket.exactRules
-        val wildcards = if (important) bucket.importantWildcardRules else bucket.wildcardRules
-        return findInSet(domain, exact) ?: findInWildcards(domain, wildcards)
-    }
-
-    /** Matches inverted rules (app exclusion lists); a null [important] matches both important and regular rules. */
-    private fun findInInvertedRules(
-        rules: List<InvertedAllowRule>,
-        domain: String,
-        important: Boolean?,
-        packageName: String?
-    ): String? {
-        for (rule in rules) {
-            if ((important == null || rule.important == important) &&
-                (packageName == null || packageName !in rule.excludedApps)
-            ) {
-                if (rule.wildcard != null && rule.wildcard.matches(domain)) {
-                    return rule.pattern
-                } else if (rule.wildcard == null && matchesDomainOrSuffix(domain, rule.pattern)) {
-                    return rule.pattern
-                }
-            }
-        }
-        return null
-    }
-
-    /** Exact match using the subscription mmap index first with the in-memory fallback, then a wildcard fallback. */
-    private fun findSubscriptionTail(domain: String, important: Boolean): String? {
-        return if (important) {
-            findSubscriptionExactMatch(domain, importantSubscriptionIndex, importantSubscriptionFallback)
-                ?: findInWildcards(domain, importantSubscriptionWildcards)
-        } else {
-            findSubscriptionExactMatch(domain, subscriptionIndex, subscriptionFallback)
-                ?: findInWildcards(domain, subscriptionWildcards)
-        }
-    }
-
-    private fun findSubscriptionExactMatch(
-        domain: String,
-        index: MappedSubscriptionRuleIndex?,
-        subscriptions: Set<String>
-    ): String? {
-        index?.find(domain, subscriptionOverrides)?.let { return it }
-        fun isEnabled(pattern: String): Boolean = if (subscriptionOverrides.containsKey(pattern)) {
-            subscriptionOverrides[pattern] != null
-        } else {
-            subscriptions.contains(pattern)
-        }
-        return firstDomainSuffixHit(domain) { suffix -> suffix.takeIf { isEnabled(it) } }
-    }
-
-    private fun findInSet(domain: String, rules: Set<String>): String? =
-        firstDomainSuffixHit(domain) { suffix -> suffix.takeIf { it in rules } }
-
-    private fun findInWildcards(domain: String, wildcards: List<AdGuardRuleParser.WildcardPattern>): String? =
-        findWildcardHit(domain, wildcards) { it }?.pattern
+    fun findImportantSubscriptionMatch(qname: String, packageName: String? = null): String? =
+        AllowRuleMatcher.findImportantSubscriptionMatch(state, qname, packageName)
 
     fun addPattern(pattern: String) {
         synchronized(this) {
+            val current = state
             if (pattern == "*" || pattern.contains('*')) {
                 val wp = AdGuardRuleParser.WildcardPattern(pattern)
-                customWildcards = customWildcards.filterNot { it.pattern == pattern } + wp
+                val newCustomWildcards = current.customWildcards.filterNot { it.pattern == pattern } + wp
+                state = current.copy(customWildcards = newCustomWildcards)
             } else {
-                customRules = HashSet(customRules).apply { add(pattern) }
+                val newCustomRules = HashSet(current.customRules).apply { add(pattern) }
+                state = current.copy(customRules = newCustomRules)
             }
         }
     }
 
     fun removePattern(pattern: String) {
         synchronized(this) {
+            val current = state
             if (pattern == "*" || pattern.contains('*')) {
-                customWildcards = customWildcards.filterNot { it.pattern == pattern }
-                importantCustomWildcards = importantCustomWildcards.filterNot { it.pattern == pattern }
+                val newCustomWildcards = current.customWildcards.filterNot { it.pattern == pattern }
+                val newImportantCustomWildcards = current.importantCustomWildcards.filterNot { it.pattern == pattern }
+                state = current.copy(
+                    customWildcards = newCustomWildcards,
+                    importantCustomWildcards = newImportantCustomWildcards
+                )
             } else {
-                if (pattern in customRules) {
-                    customRules = HashSet(customRules).apply { remove(pattern) }
+                var newCustomRules = current.customRules
+                var newImportantCustomRules = current.importantCustomRules
+                if (pattern in newCustomRules) {
+                    newCustomRules = HashSet(newCustomRules).apply { remove(pattern) }
                 }
-                if (pattern in importantCustomRules) {
-                    importantCustomRules = HashSet(importantCustomRules).apply { remove(pattern) }
+                if (pattern in newImportantCustomRules) {
+                    newImportantCustomRules = HashSet(newImportantCustomRules).apply { remove(pattern) }
                 }
+                state = current.copy(
+                    customRules = newCustomRules,
+                    importantCustomRules = newImportantCustomRules
+                )
             }
         }
     }
 
     suspend fun reloadCustomRules(dao: AllowRuleDao) {
-        val customRuleEntries = dao.enabledCustomRules()
-
-        val custom = HashSet<String>()
-        val importantCustom = HashSet<String>()
-        val customWc = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-        val importantCustomWc = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-        val customBucketsMap = HashMap<String, MutableAllowAppBucket>()
-        val customInvertedList = mutableListOf<InvertedAllowRule>()
-
-        for (entry in customRuleEntries) {
-            val isWc = entry.isWildcard || entry.pattern.contains('*')
-            val wcPattern = if (isWc) AdGuardRuleParser.WildcardPattern(entry.pattern) else null
-
-            if (entry.appInverted && !entry.appScope.isNullOrEmpty()) {
-                val excluded = entry.appScope.split('|').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
-                customInvertedList.add(InvertedAllowRule(entry.pattern, entry.important, excluded, wcPattern))
-            } else if (!entry.appScope.isNullOrEmpty()) {
-                val pkgs = entry.appScope.split('|').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-                for (pkg in pkgs) {
-                    val bucket = customBucketsMap.getOrPut(pkg) { MutableAllowAppBucket() }
-                    if (isWc && wcPattern != null) {
-                        if (entry.important) bucket.importantWildcards.add(wcPattern)
-                        else bucket.wildcards.add(wcPattern)
-                    } else {
-                        if (entry.important) bucket.importantExact.add(entry.pattern)
-                        else bucket.exact.add(entry.pattern)
-                    }
-                }
-            } else {
-                if (isWc && wcPattern != null) {
-                    if (entry.important) importantCustomWc.add(wcPattern)
-                    else customWc.add(wcPattern)
-                } else {
-                    if (entry.important) importantCustom.add(entry.pattern)
-                    else custom.add(entry.pattern)
-                }
-            }
-        }
-
+        val result = AllowRuleCacheLoader.loadCustomRules(dao)
         synchronized(this) {
-            customRules = custom
-            importantCustomRules = importantCustom
-            customWildcards = customWc
-            importantCustomWildcards = importantCustomWc
-            customAppBuckets = customBucketsMap.mapValues { it.value.toImmutable() }
-            invertedCustomRules = customInvertedList
+            state = state.copy(
+                customRules = result.customRules,
+                importantCustomRules = result.importantCustomRules,
+                customWildcards = result.customWildcards,
+                importantCustomWildcards = result.importantCustomWildcards,
+                customAppBuckets = result.customAppBuckets,
+                invertedCustomRules = result.invertedCustomRules
+            )
         }
     }
 
     fun syncPattern(pattern: String, source: String?) {
         synchronized(this) {
+            val current = state
             if (pattern == "*" || pattern.contains('*')) {
                 val wp = AdGuardRuleParser.WildcardPattern(pattern)
-                customWildcards = customWildcards.filterNot { it.pattern == pattern }
-                subscriptionWildcards = subscriptionWildcards.filterNot { it.pattern == pattern }
-                importantSubscriptionWildcards = importantSubscriptionWildcards.filterNot { it.pattern == pattern }
+                var newCustomWildcards = current.customWildcards.filterNot { it.pattern == pattern }
+                var newSubscriptionWildcards = current.subscriptionWildcards.filterNot { it.pattern == pattern }
+                var newImportantSubscriptionWildcards = current.importantSubscriptionWildcards.filterNot { it.pattern == pattern }
                 if (source != null) {
                     if (source.startsWith("sub_")) {
-                        subscriptionWildcards = subscriptionWildcards + wp
+                        newSubscriptionWildcards = newSubscriptionWildcards + wp
                     } else {
-                        customWildcards = customWildcards + wp
+                        newCustomWildcards = newCustomWildcards + wp
                     }
                 }
+                state = current.copy(
+                    customWildcards = newCustomWildcards,
+                    subscriptionWildcards = newSubscriptionWildcards,
+                    importantSubscriptionWildcards = newImportantSubscriptionWildcards
+                )
             } else {
-                customRules = HashSet(customRules).apply {
+                val newCustomRules = HashSet(current.customRules).apply {
                     remove(pattern)
                     if (source != null && !source.startsWith("sub_")) add(pattern)
                 }
-                subscriptionOverrides = HashMap(subscriptionOverrides).apply {
+                val newSubscriptionOverrides = HashMap(current.subscriptionOverrides).apply {
                     if (source == null) put(pattern, null)
                     else if (source.startsWith("sub_")) put(pattern, pattern)
                     else remove(pattern)
                 }
+                state = current.copy(
+                    customRules = newCustomRules,
+                    subscriptionOverrides = newSubscriptionOverrides
+                )
             }
         }
     }
 
     fun clear() {
+        val oldIndex: MappedSubscriptionRuleIndex?
+        val oldImportantIndex: MappedSubscriptionRuleIndex?
         synchronized(this) {
-            customRules = emptySet()
-            importantCustomRules = emptySet()
-            customWildcards = emptyList()
-            importantCustomWildcards = emptyList()
-            customAppBuckets = emptyMap()
-            invertedCustomRules = emptyList()
-
-            subscriptionFallback = emptySet()
-            importantSubscriptionFallback = emptySet()
-            subscriptionWildcards = emptyList()
-            importantSubscriptionWildcards = emptyList()
-            subscriptionAppBuckets = emptyMap()
-            invertedSubscriptionRules = emptyList()
-
-            subscriptionOverrides = emptyMap()
-            subscriptionIndex?.close()
-            importantSubscriptionIndex?.close()
-            subscriptionIndex = null
-            importantSubscriptionIndex = null
+            oldIndex = state.subscriptionIndex
+            oldImportantIndex = state.importantSubscriptionIndex
+            state = AllowRuleCacheState()
         }
+        oldIndex?.close()
+        oldImportantIndex?.close()
     }
 
     fun exportSnapshot(): ExportedAllowSnapshot {
+        val current = state
         val globalAllow = LinkedHashSet<String>()
 
-        globalAllow.addAll(customRules)
-        customWildcards.forEach { globalAllow.add(it.pattern) }
-        globalAllow.addAll(importantCustomRules)
-        importantCustomWildcards.forEach { globalAllow.add(it.pattern) }
-        globalAllow.addAll(subscriptionFallback)
-        subscriptionWildcards.forEach { globalAllow.add(it.pattern) }
-        globalAllow.addAll(importantSubscriptionFallback)
-        importantSubscriptionWildcards.forEach { globalAllow.add(it.pattern) }
+        globalAllow.addAll(current.customRules)
+        current.customWildcards.forEach { globalAllow.add(it.pattern) }
+        globalAllow.addAll(current.importantCustomRules)
+        current.importantCustomWildcards.forEach { globalAllow.add(it.pattern) }
+        globalAllow.addAll(current.subscriptionFallback)
+        current.subscriptionWildcards.forEach { globalAllow.add(it.pattern) }
+        globalAllow.addAll(current.importantSubscriptionFallback)
+        current.importantSubscriptionWildcards.forEach { globalAllow.add(it.pattern) }
 
-        val appPkgs = customAppBuckets.keys + subscriptionAppBuckets.keys
+        val appPkgs = current.customAppBuckets.keys + current.subscriptionAppBuckets.keys
         val appRulesMap = HashMap<String, List<String>>()
         for (pkg in appPkgs) {
-            val cBucket = customAppBuckets[pkg]
-            val sBucket = subscriptionAppBuckets[pkg]
+            val cBucket = current.customAppBuckets[pkg]
+            val sBucket = current.subscriptionAppBuckets[pkg]
             val all = LinkedHashSet<String>()
 
             cBucket?.let {
@@ -561,10 +237,10 @@ class AllowRuleCache(
         }
 
         val inverted = ArrayList<ExportedInvertedAllowRule>()
-        for (rule in invertedCustomRules) {
+        for (rule in current.invertedCustomRules) {
             inverted.add(ExportedInvertedAllowRule(rule.pattern, rule.excludedApps))
         }
-        for (rule in invertedSubscriptionRules) {
+        for (rule in current.invertedSubscriptionRules) {
             inverted.add(ExportedInvertedAllowRule(rule.pattern, rule.excludedApps))
         }
 
@@ -575,40 +251,3 @@ class AllowRuleCache(
         )
     }
 }
-
-data class ExportedAllowSnapshot(
-    val globalAllow: List<String>,
-    val appRules: Map<String, List<String>>,
-    val invertedRules: List<ExportedInvertedAllowRule>
-)
-
-data class ExportedInvertedAllowRule(
-    val pattern: String,
-    val excludedApps: Set<String>
-)
-
-private class MutableAllowAppBucket {
-    val exact = HashSet<String>()
-    val importantExact = HashSet<String>()
-    val wildcards = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-    val importantWildcards = mutableListOf<AdGuardRuleParser.WildcardPattern>()
-
-    fun toImmutable(): AllowAppRuleBucket = AllowAppRuleBucket(
-        exactRules = exact,
-        importantExactRules = importantExact,
-        wildcardRules = wildcards,
-        importantWildcardRules = importantWildcards
-    )
-}
-
-private suspend fun AllowRuleDao.forEachSubscriptionRulePage(
-    consume: (com.haoze.dnssr.data.dao.EnabledRule) -> Unit
-) = forEachKeysetPage(
-    ALLOW_INDEX_PAGE_SIZE,
-    { lastId, limit -> enabledSubscriptionRulesPageKeyset(limit, lastId) },
-    { it.id },
-    { consume(it.toEnabledRule()) }
-)
-
-private const val TAG = "AllowRuleCache"
-private const val ALLOW_INDEX_PAGE_SIZE = 2_000
