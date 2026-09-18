@@ -151,7 +151,7 @@ internal fun AgentAnalysisSheetContent(
         scope.launch {
             if (config.apiKey.isBlank()) {
                 isLoading = false
-                errorMessage = "未检测到配置的 API Key，请先进入智能体设置配置服务商凭据。"
+                errorMessage = "未检测到配置的 API Key，请先进入 AI 设置配置接口密钥。"
                 return@launch
             }
 
@@ -265,8 +265,8 @@ internal fun AgentAnalysisSheetContent(
                 Column {
                     Text(
                         text = when (target) {
-                            is AnalysisTarget.Domain -> localizedText("域名智能安全研判")
-                            is AnalysisTarget.RecentTraffic -> localizedText("网络流量态势诊断")
+                            is AnalysisTarget.Domain -> localizedText("域名安全分析")
+                            is AnalysisTarget.RecentTraffic -> localizedText("网络流量分析")
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
@@ -318,13 +318,13 @@ internal fun AgentAnalysisSheetContent(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = localizedText("智能体 API 尚未配置"),
+                                text = localizedText("未配置 API 密钥"),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = localizedText("软件需配置兼容 OpenAI / DeepSeek 协议的大模型密钥，方可启用域名智能研判与网络安全分析功能。"),
+                                text = localizedText("需配置 OpenAI / DeepSeek 兼容的 API 密钥后，方可使用 AI 域名与流量分析功能。"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -338,7 +338,7 @@ internal fun AgentAnalysisSheetContent(
                             ) {
                                 Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(localizedText("前往配置智能体 API"))
+                                Text(localizedText("前往配置"))
                             }
                         }
                     }
@@ -363,13 +363,13 @@ internal fun AgentAnalysisSheetContent(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = localizedText("智能体分析功能已关闭"),
+                                text = localizedText("AI 分析功能已关闭"),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = localizedText("全局智能体服务开关处于停用状态。您可以直接在此一键开启，或在设置页面管理。"),
+                                text = localizedText("AI 分析服务当前处于停用状态。您可以直接在此开启，或前往设置页面管理。"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -385,7 +385,7 @@ internal fun AgentAnalysisSheetContent(
                             ) {
                                 Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(localizedText("开启智能体分析并继续"))
+                                Text(localizedText("开启 AI 分析并继续"))
                             }
                         }
                     }
@@ -406,7 +406,7 @@ internal fun AgentAnalysisSheetContent(
                         )
                         Spacer(modifier = Modifier.height(18.dp))
                         Text(
-                            text = localizedText("正在调用大语言模型研判分析..."),
+                            text = localizedText("正在进行 AI 分析..."),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
@@ -437,7 +437,7 @@ internal fun AgentAnalysisSheetContent(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = localizedText("智能体研判失败"),
+                                    text = localizedText("分析失败"),
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                     fontWeight = FontWeight.Bold
@@ -624,14 +624,14 @@ internal fun AgentAnalysisSheetContent(
                             cm.setPrimaryClip(
                                 android.content.ClipData.newPlainText("AgentAnalysis", analysisResult?.content.orEmpty())
                             )
-                            Toast.makeText(context, "研判报告已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "分析结果已复制到剪贴板", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(localizedText("复制结论"))
+                        Text(localizedText("复制结果"))
                     }
 
                     OutlinedButton(

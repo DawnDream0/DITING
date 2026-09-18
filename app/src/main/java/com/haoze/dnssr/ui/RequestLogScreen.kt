@@ -187,7 +187,7 @@ fun RequestLogScreen(
                 IconButton(onClick = { activeAnalysisTarget = AnalysisTarget.RecentTraffic(source) }) {
                     Icon(
                         Icons.Default.AutoAwesome,
-                        contentDescription = localizedText("智能体分析流量"),
+                        contentDescription = localizedText("AI 流量分析"),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -383,7 +383,7 @@ fun DomainActionDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            localizedText("智能体分析该域名"),
+                            localizedText("AI 分析该域名"),
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold
                         )

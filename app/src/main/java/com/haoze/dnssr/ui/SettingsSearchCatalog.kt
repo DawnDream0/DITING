@@ -38,7 +38,7 @@ object ScreenDestinations {
     val outboundProxy = main(Routes.OUTBOUND_PROXY_SETTINGS, "出站代理", "将过滤后的流量转发到本地 SOCKS5 或 HTTP 代理", Icons.Filled.Lan, SettingsSection.BEHAVIOR)
     val languageSettings = main(Routes.LANGUAGE_SETTINGS, "语言设置", "选择应用界面语言", Icons.Filled.Public, SettingsSection.DATA)
     val dataCleanup = main(Routes.DATA_CLEANUP, "数据清理", "删除缓存、日志或域名规则", Icons.Filled.DeleteSweep, SettingsSection.DATA)
-    val agentApiSettings = main(Routes.AGENT_API_SETTINGS, "智能体 API", "配置大语言模型端点与密钥，赋能应用各模块的智能分析研判", Icons.Filled.SmartToy, SettingsSection.OTHER)
+    val agentApiSettings = main(Routes.AGENT_API_SETTINGS, "AI 分析", "配置大语言模型接口与密钥，用于域名和网络流量分析", Icons.Filled.SmartToy, SettingsSection.OTHER)
     val resolutionSingle = child(Routes.RESOLUTION_SINGLE, "单一服务", "选择一个 DNS 服务商进行查询", Icons.AutoMirrored.Filled.AltRoute, raceModeProviders)
     val resolutionSmart = child(Routes.RESOLUTION_SMART, "智能选择", "配置候选服务，按近期成功率和延迟优先选择", Icons.AutoMirrored.Filled.AltRoute, raceModeProviders)
     val resolutionParallel = child(Routes.RESOLUTION_PARALLEL, "最快响应", "配置同时查询并采用最先成功结果的服务", Icons.AutoMirrored.Filled.AltRoute, raceModeProviders)

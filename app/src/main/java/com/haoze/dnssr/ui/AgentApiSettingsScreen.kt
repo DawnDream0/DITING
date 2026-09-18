@@ -54,7 +54,7 @@ enum class AgentApiSubPage {
 @Composable
 fun AgentApiSettingsScreen(
     onBack: () -> Unit,
-    title: String = "智能体 API",
+    title: String = "AI 分析",
     onNavigate: (String) -> Unit = {},
     initialSubPage: AgentApiSubPage? = null
 ) {
@@ -112,7 +112,7 @@ fun AgentApiSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // 1. Service Master Switch & Status Overview
-            item { SettingsGroupTitle(localizedText("服务总控与状态")) }
+            item { SettingsGroupTitle(localizedText("服务状态")) }
             item {
                 AgentApiStatusCard(
                     config = config,
@@ -124,7 +124,7 @@ fun AgentApiSettingsScreen(
             }
 
             // 2. Secondary Settings Navigation Group
-            item { SettingsGroupTitle(localizedText("配置分类导航")) }
+            item { SettingsGroupTitle(localizedText("详细设置")) }
             item {
                 AgentApiNavigationGroup(
                     onNavigateToCredentials = { onNavigate(Routes.AGENT_API_CREDENTIALS) },
@@ -134,7 +134,7 @@ fun AgentApiSettingsScreen(
             }
 
             // 3. Live Playground
-            item { SettingsGroupTitle(localizedText("实战演练与体验")) }
+            item { SettingsGroupTitle(localizedText("功能测试")) }
             item {
                 AgentApiPlaygroundCard(
                     onAnalyzeDomain = { domain ->
@@ -147,7 +147,7 @@ fun AgentApiSettingsScreen(
             }
 
             // 4. Reset & Maintenance
-            item { SettingsGroupTitle(localizedText("重置与恢复")) }
+            item { SettingsGroupTitle(localizedText("重置设置")) }
             item {
                 Column(
                     modifier = Modifier
@@ -179,7 +179,7 @@ fun AgentApiSettingsScreen(
         AppAlertDialog(
             onDismissRequest = { showResetDialog = false },
             title = { Text(localizedText("恢复默认配置？")) },
-            text = { Text(localizedText("此操作将把所有智能体服务参数、API Key 与系统提示词恢复为出厂默认设置。")) },
+            text = { Text(localizedText("此操作将把所有 AI 分析参数、API Key 与系统提示词恢复为默认设置。")) },
             confirmButton = {
                 TextButton(
                     onClick = {

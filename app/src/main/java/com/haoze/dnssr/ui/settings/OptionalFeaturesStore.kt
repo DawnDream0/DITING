@@ -82,7 +82,7 @@ enum class OptionalFeature(
     AGENT_API(
         key = "agent_api",
         titleRes = R.string.feature_hub_agent_api,
-        description = "配置大语言模型端点与密钥，为日志研判和网络诊断提供智能分析",
+        description = "配置大语言模型接口与密钥，用于日志和网络流量分析",
         icon = Icons.Filled.SmartToy
     );
 

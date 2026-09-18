@@ -55,7 +55,7 @@ import kotlin.math.roundToInt
 @Composable
 fun AgentApiParamsScreen(
     onBack: () -> Unit,
-    title: String = "推理参数与系统设定"
+    title: String = "参数与提示词"
 ) {
     val context = LocalContext.current
 
@@ -67,7 +67,7 @@ fun AgentApiParamsScreen(
     }
 
     val promptTemplates = listOf(
-        "DNS 威胁研判专家" to "你是一名网络安全与 DNS 威胁情报专家。擅长对域名安全性、防盗链、DGA 随机特征、恶意软件外联及追踪探针进行研判，并给出严谨明确的处置建议。",
+        "安全威胁分析" to "你是一名网络安全与 DNS 威胁情报专家。擅长对域名安全性、防盗链、DGA 随机特征、恶意软件外联及追踪探针进行分析，并给出明确的处置建议。",
         "极简技术审查" to "你是一名资深网络协议工程师。请对给定的域名和流量快速给出最精炼的技术分类、风险等级与规则处置建议，格式化输出，杜绝多余套话。",
         "隐私与遥测审查" to "你是一名数字隐私与数据保护合规审计师。重点分析该域名是否涉及未经授权的用户行为遥测、设备指纹追踪或广告归因统计。"
     )
@@ -80,7 +80,7 @@ fun AgentApiParamsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // 1. System Prompt
-            item { SettingsGroupTitle(localizedText("系统提示词 (System Prompt)")) }
+            item { SettingsGroupTitle(localizedText("系统提示词")) }
             item {
                 SettingsSurfaceGroup(
                     content = listOf {
@@ -98,7 +98,7 @@ fun AgentApiParamsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = localizedText("全局专家角色设定"),
+                                    text = localizedText("系统提示词设定"),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -140,7 +140,7 @@ fun AgentApiParamsScreen(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = localizedText("说明：当您在日志、仪表盘或缓存页面发起智能体分析时，将自动注入此系统提示词作为大语言模型的最高指导指令。"),
+                                text = localizedText("说明：在日志、仪表盘或缓存页面发起 AI 分析时，将使用此系统提示词引导大语言模型进行分析。"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -205,7 +205,7 @@ fun AgentApiParamsScreen(
                             )
 
                             val styleLabel = when {
-                                config.temperature <= 0.3 -> "严谨精确 (最适合威胁研判与格式化分析)"
+                                config.temperature <= 0.3 -> "严谨精确 (适合安全分析与结构化输出)"
                                 config.temperature <= 0.8 -> "平衡适中 (推荐日常综合分析场景)"
                                 else -> "发散多变 (输出内容更为丰富自由)"
                             }

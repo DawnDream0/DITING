@@ -65,8 +65,8 @@ internal fun AgentApiStatusCard(
         content = listOf(
             {
                 SettingsSwitchItem(
-                    title = localizedText("启用智能体分析"),
-                    subtitle = localizedText("开启后，可在 DNS 日志、请求日志、仪表盘等页面使用大模型智能研判域名威胁与网络流量"),
+                    title = localizedText("启用 AI 分析"),
+                    subtitle = localizedText("开启后，可在 DNS 日志、请求日志、仪表盘等页面使用 AI 分析域名与网络流量"),
                     checked = config.enabled,
                     onCheckedChange = onEnabledChange
                 )
@@ -158,24 +158,24 @@ internal fun AgentApiNavigationGroup(
             {
                 SettingsNavigationRow(
                     icon = Icons.Filled.Key,
-                    title = localizedText("服务商与密钥 (Credentials)"),
-                    subtitle = localizedText("配置服务地址 Base URL、API Key 凭据与连通性测速"),
+                    title = localizedText("接口与密钥"),
+                    subtitle = localizedText("配置服务地址 Base URL、API Key 与连通性测试"),
                     onClick = onNavigateToCredentials
                 )
             },
             {
                 SettingsNavigationRow(
                     icon = Icons.Filled.Layers,
-                    title = localizedText("模型与预设中心 (Presets)"),
-                    subtitle = localizedText("官方精选模板（DeepSeek、GPT、Kimi 等）、自定义网关与在线模型拉取"),
+                    title = localizedText("模型与预设"),
+                    subtitle = localizedText("管理模型预设模板，支持在线拉取模型列表"),
                     onClick = onNavigateToPresets
                 )
             },
             {
                 SettingsNavigationRow(
                     icon = Icons.Filled.Psychology,
-                    title = localizedText("推理参数与系统设定 (Params)"),
-                    subtitle = localizedText("专家系统提示词 (System Prompt)、采样温度 (Temperature) 等高级参数"),
+                    title = localizedText("参数与提示词"),
+                    subtitle = localizedText("配置系统提示词与采样温度等生成参数"),
                     onClick = onNavigateToParams
                 )
             }
@@ -231,7 +231,7 @@ internal fun AgentApiPlaygroundCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = localizedText("智能体实战演练与体验"),
+                        text = localizedText("功能测试"),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -239,7 +239,7 @@ internal fun AgentApiPlaygroundCard(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = localizedText("输入任意域名，即时体验大模型安全归属研判、风险等级评分与处置建议："),
+                    text = localizedText("输入任意域名，测试 AI 安全分析与处置建议："),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -268,7 +268,7 @@ internal fun AgentApiPlaygroundCard(
                     ) {
                         Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(localizedText("研判测试域名"))
+                        Text(localizedText("分析测试域名"))
                     }
 
                     OutlinedButton(
@@ -278,7 +278,7 @@ internal fun AgentApiPlaygroundCard(
                     ) {
                         Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(localizedText("诊断当前网络"))
+                        Text(localizedText("分析当前网络"))
                     }
                 }
             }
@@ -292,6 +292,6 @@ internal fun AgentApiPlaygroundCard(
 @Composable
 internal fun AgentApiNoticeSection() {
     SettingsInfoText(
-        localizedText("提示：配置智能体服务后，您可以在软件的【DNS 日志】、【HTTP 请求日志】、【日志仪表盘】及【DNS 缓存】等页面随时点击“智能体分析”按钮，对异常流量和未知域名进行实时 AI 深度研判并一键应用处置策略。")
+        localizedText("提示：配置并启用后，您可以在【DNS 日志】、【HTTP 请求日志】、【日志仪表盘】及【DNS 缓存】等页面随时点击“AI 分析”按钮，对异常流量和未知域名进行安全分析并一键添加规则。")
     )
 }

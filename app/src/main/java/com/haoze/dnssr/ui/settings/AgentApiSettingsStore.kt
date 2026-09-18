@@ -80,7 +80,7 @@ object AgentApiPresetStore {
             name = "DeepSeek V4 Pro",
             baseUrl = "https://api.deepseek.com/v1",
             model = "deepseek-v4-pro",
-            description = "旗舰推理，适合复杂研判",
+            description = "旗舰推理，适合复杂分析",
             builtin = true
         ),
         ModelPreset(
@@ -88,7 +88,7 @@ object AgentApiPresetStore {
             name = "OpenAI GPT-6 Astra",
             baseUrl = "https://api.openai.com/v1",
             model = "gpt-6-astra",
-            description = "最新前沿旗舰，复杂推理与智能体",
+            description = "通用旗舰大模型，适合各类复杂分析",
             builtin = true
         ),
         ModelPreset(

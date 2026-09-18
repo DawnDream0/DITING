@@ -140,7 +140,7 @@ fun DnsCacheScreen(
             ) {
                 Icon(
                     Icons.Filled.AutoAwesome,
-                    contentDescription = localizedText("智能体网络分析"),
+                    contentDescription = localizedText("AI 网络分析"),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
