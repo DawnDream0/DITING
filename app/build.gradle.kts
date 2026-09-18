@@ -16,8 +16,8 @@ android {
         applicationId = "com.haoze.dnssr"
         minSdk = 29
         targetSdk = 36
-        versionCode = 60011
-        versionName = "6.11"
+        versionCode = 60012
+        versionName = "6.12"
         ndk {
             abiFilters += "arm64-v8a"
         }
