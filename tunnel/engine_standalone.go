@@ -334,6 +334,10 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 				if staleResp != nil {
 					var respMsg dns.Msg
 					if err := respMsg.Unpack(staleResp); err == nil {
+						if chainBlocked, chainReason := e.checkResponseChain(&respMsg, appName); chainBlocked {
+							e.standaloneBlock(w, r, chainReason, appName, startTime)
+							return
+						}
 						respMsg.Id = r.Id
 						e.rememberAppAllowlistResponse(uid, &respMsg)
 						e.rememberResolvedIPs(r.Question[0].Name, &respMsg)
@@ -373,6 +377,10 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 		elapsed := time.Since(startTime).Milliseconds()
 		e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), true, r.Question[0].Qtype, elapsed, appName, "", "upstream_dns", "", false)
 	} else {
+		if chainBlocked, chainReason := e.checkResponseChain(&respMsg, appName); chainBlocked {
+			e.standaloneBlock(w, r, chainReason, appName, startTime)
+			return
+		}
 		e.totalQueries.Add(1)
 		elapsed := time.Since(startTime).Milliseconds()
 		e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), false, r.Question[0].Qtype, elapsed, appName, resolvedAddressesMsg(&respMsg), "", "", isCached)

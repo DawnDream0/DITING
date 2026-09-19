@@ -47,6 +47,8 @@ VPN 模式下的完整链路:
 
 ### 2.1 【高·主因】CNAME 链不做二次过滤(CNAME Cloaking 未防护)
 
+> **状态:已修复**(2026-09-19 实施,见 P0-A;新增 `tunnel/engine_response_chain.go` + 两处转发路径接入 + 7 个单测)。
+
 **现象**:只对原始查询名(`Question[0].Name`)做规则匹配,上游应答中的 CNAME 链不做任何检查,原样透传给客户端。
 
 **证据**:
@@ -167,6 +169,8 @@ else -> return CategorizedLine(unsupportedCount = 1)
 > 均为建议方案,本次排查未实施。P0 收益最大、边界清晰;P1 是解析完整性对齐;P2 是正确性/一致性小修;P3 是产品级决策项。
 
 ### P0-A:CNAME/SVCB 应答域二次过滤(Go 侧,建议优先)
+
+> **状态:已实施**(2026-09-19)。helper 落地于 `tunnel/engine_response_chain.go`(`checkResponseChain`),除原方案的两处接入点外,同时覆盖了 `standaloneForward`/`handleForward` 的 stale 缓存回退路径与 `handleDNSQuery` 的缓存命中快速路径(规则更新后旧缓存应答也能被重新判定)。单测见 `tunnel/engine_response_chain_test.go`。
 
 **方案**:
 

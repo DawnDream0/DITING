@@ -177,6 +177,13 @@ func (e *Engine) handleDNSQuery(queryInfo *DNSQueryInfo) {
 
 	if e.dnsCache != nil && e.dnsCache.isEnabled() {
 		if cachedResp, hit, _ := e.dnsCache.get(queryInfo.RawDNSPayload); hit {
+			var cachedMsg dns.Msg
+			if cachedMsg.Unpack(cachedResp) == nil {
+				if chainBlocked, chainReason := e.checkResponseChain(&cachedMsg, appName); chainBlocked {
+					e.handleBlockedDomain(queryInfo, chainReason, appName, startTime)
+					return
+				}
+			}
 			response := BuildForwardedResponse(queryInfo, cachedResp)
 			e.writeToTUN(response)
 			e.totalQueries.Add(1)
@@ -273,6 +280,10 @@ func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTim
 				if staleResp != nil {
 					var staleMsg dns.Msg
 					if err := staleMsg.Unpack(staleResp); err == nil {
+						if chainBlocked, chainReason := e.checkResponseChain(&staleMsg, appName); chainBlocked {
+							e.handleBlockedDomain(queryInfo, chainReason, appName, startTime)
+							return
+						}
 						e.rememberResolvedIPs(queryInfo.Domain, &staleMsg)
 					}
 					response := BuildForwardedResponse(queryInfo, staleResp)
@@ -301,6 +312,12 @@ func (e *Engine) handleForward(queryInfo *DNSQueryInfo, appName string, startTim
 
 	var respMsg dns.Msg
 	hasUnpacked := (respMsg.Unpack(resp) == nil)
+	if hasUnpacked {
+		if chainBlocked, chainReason := e.checkResponseChain(&respMsg, appName); chainBlocked {
+			e.handleBlockedDomain(queryInfo, chainReason, appName, startTime)
+			return
+		}
+	}
 
 	blocked := false
 	resolvedIPs := ""
