@@ -34,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -45,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haoze.dnssr.ui.copyToClipboard
 import com.haoze.dnssr.ui.localizedText
 
 /**
@@ -347,7 +347,6 @@ fun MarkdownViewer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
     val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
 
     Column(
@@ -470,7 +469,7 @@ fun MarkdownViewer(
                                 )
                                 IconButton(
                                     onClick = {
-                                        clipboardManager.setText(AnnotatedString(block.code))
+                                        context.copyToClipboard("code", block.code)
                                         Toast.makeText(context, localizedText(context, "代码已复制到剪贴板"), Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.size(24.dp)
