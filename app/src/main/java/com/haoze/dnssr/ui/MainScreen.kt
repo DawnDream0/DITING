@@ -2,6 +2,9 @@ package com.haoze.dnssr.ui
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -33,6 +37,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoze.dnssr.ui.settings.SystemSettingsStore
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -97,6 +102,8 @@ fun MainScreen(
     }
     val pagerState = rememberPagerState(initialPage = 0) { 2 }
     val coroutineScope = rememberCoroutineScope()
+    val pageAlpha = remember { Animatable(1f) }
+    var pageSwitchJob by remember { mutableStateOf<Job?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -146,7 +153,9 @@ fun MainScreen(
             ) {
                 HorizontalPager(
                     state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = pageAlpha.value },
                     beyondViewportPageCount = 1
                 ) { page ->
                     if (page == 0) {
@@ -209,8 +218,21 @@ fun MainScreen(
                         selectedPage = pagerState.currentPage,
                         onPageSelected = { targetPage ->
                             if (pagerState.currentPage != targetPage) {
-                                coroutineScope.launch {
-                                    pagerState.scrollToPage(targetPage)
+                                pageSwitchJob?.cancel()
+                                pageSwitchJob = coroutineScope.launch {
+                                    try {
+                                        pageAlpha.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = tween(durationMillis = 90, easing = LinearEasing)
+                                        )
+                                        pagerState.scrollToPage(targetPage)
+                                        pageAlpha.animateTo(
+                                            targetValue = 1f,
+                                            animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
+                                        )
+                                    } finally {
+                                        pageAlpha.snapTo(1f)
+                                    }
                                 }
                             }
                         },
