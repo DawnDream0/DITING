@@ -30,7 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,6 +82,12 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sign
 
+/** Pager progress within this distance of the indicator target counts as caught up. */
+private const val PAGER_CATCH_UP_TOLERANCE = 0.02f
+
+/** Safety net: lets the pager take the indicator back if its scroll never settles on the target. */
+private const val PAGER_CATCH_UP_TIMEOUT_NANO = 800_000_000L
+
 /**
  * Liquid-glass floating pill bottom bar (SyncTouch/KernelSU design language).
  *
@@ -96,7 +102,10 @@ import kotlin.math.sign
  *   by the device gravity sensor, which lives only while this bar is rendered
  *   in glass mode and the app is resumed (see [rememberDeviceTilt]);
  * - [pagerProgress] keeps the indicator glued to the pager while its pages
- *   scroll; without it the indicator simply springs to [selectedPage];
+ *   scroll; a change this bar started instead owns the indicator until the
+ *   pager catches up with it, so the release animation is never pulled back to
+ *   the page the finger left. Without [pagerProgress] the indicator simply
+ *   springs to [selectedPage];
  */
 @Composable
 fun FloatingNavigationBar(
@@ -129,6 +138,11 @@ fun FloatingNavigationBar(
     var tabWidthPx by remember { mutableFloatStateOf(0f) }
     var navWidthPx by remember { mutableFloatStateOf(0f) }
     var isUserDragging by remember { mutableStateOf(false) }
+    // A page change this bar started is still travelling through the pager: the
+    // indicator keeps the animation the finger left off at instead of being
+    // snapped back to the pager's still-old progress.
+    var isPagerCatchUpPending by remember { mutableStateOf(false) }
+    var pagerCatchUpDeadlineNano by remember { mutableLongStateOf(0L) }
 
     val offsetAnimation = remember { Animatable(0f) }
     val rubberBandPx = with(density) { 4.dp.toPx() }
@@ -142,8 +156,6 @@ fun FloatingNavigationBar(
             }
         }
     }
-
-    var currentIndex by remember(selectedPage) { mutableIntStateOf(selectedPage) }
 
     val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr) {
         DampedDragAnimation(
@@ -162,14 +174,21 @@ fun FloatingNavigationBar(
             snapshotFlow { pagerProgress() }
                 .collect { progress ->
                     if (!isUserDragging) {
-                        dampedDragAnimation.snapToValue(progress.fastCoerceIn(0f, (tabsCount - 1).toFloat()))
+                        val pagerValue = progress.fastCoerceIn(0f, (tabsCount - 1).toFloat())
+                        if (isPagerCatchUpPending) {
+                            val caughtUp =
+                                abs(pagerValue - dampedDragAnimation.targetValue) <= PAGER_CATCH_UP_TOLERANCE ||
+                                    System.nanoTime() >= pagerCatchUpDeadlineNano
+                            if (!caughtUp) return@collect
+                            isPagerCatchUpPending = false
+                        }
+                        dampedDragAnimation.snapToValue(pagerValue)
                     }
                 }
         }
     } else {
         LaunchedEffect(selectedPage) {
             if (!isUserDragging) {
-                currentIndex = selectedPage
                 dampedDragAnimation.animateToValue(selectedPage.toFloat())
             }
         }
@@ -251,6 +270,7 @@ fun FloatingNavigationBar(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         isUserDragging = true
+                        isPagerCatchUpPending = false
                         val downX = down.position.x
                         interactiveHighlight.press(down.position)
                         dampedDragAnimation.press()
@@ -305,8 +325,12 @@ fun FloatingNavigationBar(
                                     dampedDragAnimation.targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
                                 }
 
-                                currentIndex = targetIndex
                                 dampedDragAnimation.animateToValue(targetIndex.toFloat())
+                                if (pagerProgress != null) {
+                                    isPagerCatchUpPending = true
+                                    pagerCatchUpDeadlineNano =
+                                        System.nanoTime() + PAGER_CATCH_UP_TIMEOUT_NANO
+                                }
                                 onPageSelected(targetIndex)
 
                                 val finalCenter = Offset(
