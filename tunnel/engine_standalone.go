@@ -57,7 +57,6 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 
 	if appOverride != "" {
 		appName = appOverride
-		logf("DITING-DEBUG serveDNS domain=%s appName=%q appOverride=%q", domain, appName, appOverride)
 	} else if e.appResolver != nil {
 		if addr := w.RemoteAddr(); addr != nil {
 			srcPort := 0
