@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.haoze.dnssr.ui.ModernLogDashboardUiState
 import com.haoze.dnssr.ui.localizedText
@@ -35,7 +36,8 @@ fun AllModeDashboard(
     onNavigateToRaceStats: () -> Unit,
     onNavigateToBootstrapStats: () -> Unit,
     onNavigateToSubscriptionInterceptionStats: () -> Unit,
-    onNavigateToTrafficStats: (() -> Unit)? = null
+    onNavigateToTrafficStats: (() -> Unit)? = null,
+    contentBottomPadding: Dp = 0.dp
 ) {
     val stats = state.dailyStats
     val race = state.race
@@ -46,7 +48,7 @@ fun AllModeDashboard(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp + contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -251,7 +253,8 @@ fun FilteredModeDashboard(
     onNavigateToRaceStats: () -> Unit,
     onNavigateToBootstrapStats: () -> Unit,
     onNavigateToSubscriptionInterceptionStats: () -> Unit,
-    onNavigateToTrafficStats: (() -> Unit)? = null
+    onNavigateToTrafficStats: (() -> Unit)? = null,
+    contentBottomPadding: Dp = 0.dp
 ) {
     val stats = state.dailyStats
     val race = state.race
@@ -261,7 +264,7 @@ fun FilteredModeDashboard(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp + contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -456,7 +459,8 @@ fun OffModeDashboard(
     onNavigateToDnsCache: () -> Unit,
     onNavigateToRaceStats: () -> Unit,
     onNavigateToBootstrapStats: () -> Unit,
-    onNavigateToTrafficStats: (() -> Unit)? = null
+    onNavigateToTrafficStats: (() -> Unit)? = null,
+    contentBottomPadding: Dp = 0.dp
 ) {
     val race = state.race
     val bootstrap = state.bootstrap
@@ -464,7 +468,7 @@ fun OffModeDashboard(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp + contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {

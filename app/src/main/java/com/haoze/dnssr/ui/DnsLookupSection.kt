@@ -35,7 +35,10 @@ import com.haoze.dnssr.vpn.DnsLookupTool
  * start button -> resolution results and record details.
  */
 @Composable
-internal fun DnsLookupSection(viewModel: NetworkToolsViewModel) {
+internal fun DnsLookupSection(
+    viewModel: NetworkToolsViewModel,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+) {
     val context = LocalContext.current
     val dnsHost by viewModel.dnsHost.collectAsStateWithLifecycle()
     val dnsRecordType by viewModel.dnsRecordType.collectAsStateWithLifecycle()
@@ -46,7 +49,7 @@ internal fun DnsLookupSection(viewModel: NetworkToolsViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = ToolPageContentPadding,
+        contentPadding = toolPageContentPadding(contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {

@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -92,13 +93,14 @@ fun NetworkToolsScreen(
     SettingsScaffold(
         title = title,
         onBack = onBack,
-        showBackIcon = showBackIcon
+        showBackIcon = showBackIcon,
+        containerColor = if (!showBackIcon) Color.Transparent else MaterialTheme.colorScheme.background,
+        topBarContainerColor = if (!showBackIcon) Color.Transparent else MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(bottom = contentBottomPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             NetworkOverviewCard(
                 snapshot = networkSnapshot,
@@ -126,7 +128,10 @@ fun NetworkToolsScreen(
                 }
             }
 
-            PrimaryTabRow(selectedTabIndex = modeIndex) {
+            PrimaryTabRow(
+                selectedTabIndex = modeIndex,
+                containerColor = Color.Transparent
+            ) {
                 NetworkToolMode.entries.forEachIndexed { index, mode ->
                     Tab(
                         selected = modeIndex == index,
@@ -144,10 +149,10 @@ fun NetworkToolsScreen(
                     .weight(1f)
             ) { page ->
                 when (NetworkToolMode.entries[page]) {
-                    NetworkToolMode.SPEED_TEST -> SpeedTestSection(speedTestViewModel)
-                    NetworkToolMode.PING -> PingSection(viewModel)
-                    NetworkToolMode.DNS_LOOKUP -> DnsLookupSection(viewModel)
-                    NetworkToolMode.TRACEROUTE -> TracerouteSection(viewModel)
+                    NetworkToolMode.SPEED_TEST -> SpeedTestSection(speedTestViewModel, contentBottomPadding)
+                    NetworkToolMode.PING -> PingSection(viewModel, contentBottomPadding)
+                    NetworkToolMode.DNS_LOOKUP -> DnsLookupSection(viewModel, contentBottomPadding)
+                    NetworkToolMode.TRACEROUTE -> TracerouteSection(viewModel, contentBottomPadding)
                 }
             }
         }

@@ -42,6 +42,7 @@ class DampedDragAnimation(
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit = { _, _ -> },
 ) {
     private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
+    private val tabSwitchAnimationSpec = spring(0.9f, 600f, visibilityThreshold)
     private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
     private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
@@ -58,6 +59,7 @@ class DampedDragAnimation(
 
     val value: Float get() = valueAnimation.value
     val targetValue: Float get() = valueAnimation.targetValue
+    val isRunning: Boolean get() = valueAnimation.isRunning
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
@@ -129,9 +131,14 @@ class DampedDragAnimation(
             mutatorMutex.mutate {
                 press()
                 val targetValue = value.coerceIn(valueRange)
-                launch { valueAnimation.animateTo(targetValue, valueAnimationSpec) }
-                if (velocity != 0f) {
-                    launch { velocityAnimation.animateTo(0f, velocityAnimationSpec) }
+                launch {
+                    try {
+                        valueAnimation.animateTo(targetValue, tabSwitchAnimationSpec) {
+                            updateVelocity()
+                        }
+                    } finally {
+                        velocityAnimation.animateTo(0f, velocityAnimationSpec)
+                    }
                 }
                 release()
             }

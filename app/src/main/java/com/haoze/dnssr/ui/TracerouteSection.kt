@@ -43,7 +43,10 @@ import com.haoze.dnssr.vpn.NetworkTraceRouteTool
  * per-hop timeline.
  */
 @Composable
-internal fun TracerouteSection(viewModel: NetworkToolsViewModel) {
+internal fun TracerouteSection(
+    viewModel: NetworkToolsViewModel,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+) {
     val context = LocalContext.current
     val traceTarget by viewModel.traceTarget.collectAsStateWithLifecycle()
     val traceMaxHops by viewModel.traceMaxHops.collectAsStateWithLifecycle()
@@ -53,7 +56,7 @@ internal fun TracerouteSection(viewModel: NetworkToolsViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = ToolPageContentPadding,
+        contentPadding = toolPageContentPadding(contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {

@@ -36,7 +36,10 @@ import com.haoze.dnssr.vpn.NetworkPingTool
  * stats band and per-packet details.
  */
 @Composable
-internal fun PingSection(viewModel: NetworkToolsViewModel) {
+internal fun PingSection(
+    viewModel: NetworkToolsViewModel,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+) {
     val pingTarget by viewModel.pingTarget.collectAsStateWithLifecycle()
     val pingCount by viewModel.pingCount.collectAsStateWithLifecycle()
     val isPinging by viewModel.isPinging.collectAsStateWithLifecycle()
@@ -44,7 +47,7 @@ internal fun PingSection(viewModel: NetworkToolsViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = ToolPageContentPadding,
+        contentPadding = toolPageContentPadding(contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {

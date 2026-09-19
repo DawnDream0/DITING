@@ -58,6 +58,8 @@ fun SettingsScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     belowTopBar: @Composable ColumnScope.() -> Unit = {},
     showBackIcon: Boolean = true,
+    containerColor: Color = MaterialTheme.colorScheme.background,
+    topBarContainerColor: Color = containerColor,
     content: @Composable (PaddingValues) -> Unit
 ) {
     SettingsScaffold(
@@ -73,6 +75,8 @@ fun SettingsScaffold(
         actions = actions,
         belowTopBar = belowTopBar,
         showBackIcon = showBackIcon,
+        containerColor = containerColor,
+        topBarContainerColor = topBarContainerColor,
         content = content
     )
 }
@@ -85,15 +89,18 @@ fun SettingsScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     belowTopBar: @Composable ColumnScope.() -> Unit = {},
     showBackIcon: Boolean = true,
+    containerColor: Color = MaterialTheme.colorScheme.background,
+    topBarContainerColor: Color = containerColor,
     content: @Composable (PaddingValues) -> Unit
 ) {
     Scaffold(
+        containerColor = containerColor,
         topBar = {
             Column {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        scrolledContainerColor = MaterialTheme.colorScheme.background
+                        containerColor = topBarContainerColor,
+                        scrolledContainerColor = topBarContainerColor
                     ),
                     title = titleContent,
                     navigationIcon = {

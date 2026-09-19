@@ -62,7 +62,10 @@ private fun availableProtocols(providers: List<DnsProvider>): List<DnsProtocol> 
  * with the original speed test page, owned by [RaceModeSettingsViewModel].
  */
 @Composable
-internal fun SpeedTestSection(viewModel: RaceModeSettingsViewModel) {
+internal fun SpeedTestSection(
+    viewModel: RaceModeSettingsViewModel,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+) {
     val context = LocalContext.current
     val providers by viewModel.providers.collectAsStateWithLifecycle()
     val selectedIds by viewModel.latencyTestSelectedIds.collectAsStateWithLifecycle()
@@ -98,7 +101,7 @@ internal fun SpeedTestSection(viewModel: RaceModeSettingsViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp + contentBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {

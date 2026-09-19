@@ -162,7 +162,7 @@ fun MainScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer { alpha = pageAlpha.value },
-            beyondViewportPageCount = 1
+            beyondViewportPageCount = (bottomBarItems.size - 1).coerceAtLeast(1)
         ) { page ->
             when (bottomBarItems.getOrNull(page)) {
                 BottomBarDestination.HOME -> {

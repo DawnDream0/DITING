@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.haoze.dnssr.SettingsRouteActivity
 import com.haoze.dnssr.ui.agent.AgentAnalysisSheet
@@ -96,6 +97,8 @@ fun ModernLogDashboardScreen(
         },
         onBack = onBack,
         showBackIcon = showBackIcon,
+        containerColor = if (!showBackIcon) Color.Transparent else MaterialTheme.colorScheme.background,
+        topBarContainerColor = if (!showBackIcon) Color.Transparent else MaterialTheme.colorScheme.background,
         actions = {
             IconButton(onClick = { showAgentAnalysis = true }) {
                 Icon(
@@ -115,9 +118,7 @@ fun ModernLogDashboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(bottom = contentBottomPadding)
-                .background(colors.background)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             if (uiState.loading && !uiState.hasData) {
                 Box(
@@ -135,7 +136,8 @@ fun ModernLogDashboardScreen(
                         onNavigateToRaceStats = onNavigateToRaceStats,
                         onNavigateToBootstrapStats = onNavigateToBootstrapStats,
                         onNavigateToSubscriptionInterceptionStats = onNavigateToSubscriptionInterceptionStats,
-                        onNavigateToTrafficStats = onNavigateToTrafficStats
+                        onNavigateToTrafficStats = onNavigateToTrafficStats,
+                        contentBottomPadding = contentBottomPadding
                     )
                     DnsLogMode.BLOCKED_AND_ERRORS -> FilteredModeDashboard(
                         state = uiState,
@@ -144,14 +146,16 @@ fun ModernLogDashboardScreen(
                         onNavigateToRaceStats = onNavigateToRaceStats,
                         onNavigateToBootstrapStats = onNavigateToBootstrapStats,
                         onNavigateToSubscriptionInterceptionStats = onNavigateToSubscriptionInterceptionStats,
-                        onNavigateToTrafficStats = onNavigateToTrafficStats
+                        onNavigateToTrafficStats = onNavigateToTrafficStats,
+                        contentBottomPadding = contentBottomPadding
                     )
                     DnsLogMode.OFF -> OffModeDashboard(
                         state = uiState,
                         onNavigateToDnsCache = onNavigateToDnsCache,
                         onNavigateToRaceStats = onNavigateToRaceStats,
                         onNavigateToBootstrapStats = onNavigateToBootstrapStats,
-                        onNavigateToTrafficStats = onNavigateToTrafficStats
+                        onNavigateToTrafficStats = onNavigateToTrafficStats,
+                        contentBottomPadding = contentBottomPadding
                     )
                 }
             }

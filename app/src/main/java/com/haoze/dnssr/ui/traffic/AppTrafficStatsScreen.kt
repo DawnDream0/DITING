@@ -77,6 +77,8 @@ fun AppTrafficStatsScreen(
         title = localizedText("应用流量统计"),
         onBack = onBack,
         showBackIcon = showBackIcon,
+        containerColor = if (!showBackIcon) Color.Transparent else MaterialTheme.colorScheme.background,
+        topBarContainerColor = if (!showBackIcon) Color.Transparent else MaterialTheme.colorScheme.background,
         actions = {
             IconButton(onClick = { showClearConfirmDialog = true }) {
                 Icon(
@@ -95,9 +97,7 @@ fun AppTrafficStatsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(bottom = contentBottomPadding)
-                .background(colors.background)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             SecondaryScrollableTabRow(
                 selectedTabIndex = uiState.selectedTimeRange.ordinal,
@@ -128,7 +128,7 @@ fun AppTrafficStatsScreen(
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp + contentBottomPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item(key = "speed_gauge") {

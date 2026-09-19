@@ -182,10 +182,12 @@ fun FloatingNavigationBar(
                     if (!isUserDragging) {
                         val pagerValue = progress.fastCoerceIn(0f, (tabsCount - 1).toFloat())
                         if (isPagerCatchUpPending) {
-                            val caughtUp =
-                                abs(pagerValue - dampedDragAnimation.targetValue) <= PAGER_CATCH_UP_TOLERANCE ||
-                                    System.nanoTime() >= pagerCatchUpDeadlineNano
-                            if (!caughtUp) return@collect
+                            val isStillAnimating = dampedDragAnimation.isRunning ||
+                                abs(dampedDragAnimation.value - dampedDragAnimation.targetValue) > PAGER_CATCH_UP_TOLERANCE
+                            val isTimedOut = System.nanoTime() >= pagerCatchUpDeadlineNano
+                            if (isStillAnimating && !isTimedOut) {
+                                return@collect
+                            }
                             isPagerCatchUpPending = false
                         }
                         dampedDragAnimation.snapToValue(pagerValue)
@@ -450,7 +452,17 @@ fun FloatingNavigationBar(
                         label = localizedText(destination.tabLabel),
                         accentColor = if (isGlassEnabled) MaterialTheme.colorScheme.onPrimaryContainer else accentColor,
                         contentColor = tabContentColor,
-                        onSelect = { onPageSelected(index) }
+                        onSelect = {
+                            if (selectedPage != index) {
+                                dampedDragAnimation.animateToValue(index.toFloat())
+                                if (pagerProgress != null) {
+                                    isPagerCatchUpPending = true
+                                    pagerCatchUpDeadlineNano =
+                                        System.nanoTime() + PAGER_CATCH_UP_TIMEOUT_NANO
+                                }
+                                onPageSelected(index)
+                            }
+                        }
                     )
                 }
             }

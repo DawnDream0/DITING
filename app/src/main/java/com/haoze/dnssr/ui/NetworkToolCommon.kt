@@ -15,7 +15,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.haoze.dnssr.ui.components.SettingsCornerShape
 
-internal val ToolPageContentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
+internal fun toolPageContentPadding(bottomExtra: androidx.compose.ui.unit.Dp = 0.dp) =
+    PaddingValues(top = 12.dp, bottom = 24.dp + bottomExtra)
+
+internal val ToolPageContentPadding = toolPageContentPadding()
 
 @Composable
 internal fun ToolTargetField(
