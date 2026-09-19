@@ -427,16 +427,17 @@ func (n *trieBuilderNode) saveToFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("create trie file: %w", err)
 	}
-	defer f.Close()
+
+	// All writes go through a checked bufio.Writer: a silent short write would
+	// persist a corrupt trie that readers mmap as if it were valid.
+	w := bufio.NewWriter(f)
 
 	header := make([]byte, headerSize)
 	binary.BigEndian.PutUint32(header[0:4], trieMagic)
 	binary.BigEndian.PutUint32(header[4:8], trieVersion)
 	binary.BigEndian.PutUint32(header[8:12], uint32(nodeCount))
 	binary.BigEndian.PutUint32(header[12:16], uint32(domainCount))
-	if _, err := f.Write(header); err != nil {
-		return err
-	}
+	w.Write(header)
 
 	queue2 := []*trieBuilderNode{n}
 	for len(queue2) > 0 {
@@ -444,27 +445,27 @@ func (n *trieBuilderNode) saveToFile(path string) error {
 		queue2 = queue2[1:]
 
 		if node.isTerminal {
-			f.Write([]byte{1})
+			w.Write([]byte{1})
 		} else {
-			f.Write([]byte{0})
+			w.Write([]byte{0})
 		}
 
 		sortedLabels := sortedKeys(node.children)
 		countBuf := make([]byte, 4)
 		binary.BigEndian.PutUint32(countBuf, uint32(len(sortedLabels)))
-		f.Write(countBuf)
+		w.Write(countBuf)
 
 		for _, label := range sortedLabels {
 			child := node.children[label]
 
 			lenBuf := make([]byte, 2)
 			binary.BigEndian.PutUint16(lenBuf, uint16(len(label)))
-			f.Write(lenBuf)
-			f.Write([]byte(label))
+			w.Write(lenBuf)
+			w.Write([]byte(label))
 
 			offBuf := make([]byte, 4)
 			binary.BigEndian.PutUint32(offBuf, uint32(offsets[child]))
-			f.Write(offBuf)
+			w.Write(offBuf)
 		}
 
 		for _, label := range sortedLabels {
@@ -472,6 +473,17 @@ func (n *trieBuilderNode) saveToFile(path string) error {
 		}
 	}
 
+	if err := w.Flush(); err != nil {
+		f.Close()
+		return fmt.Errorf("write trie: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("sync trie: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close trie: %w", err)
+	}
 	return nil
 }
 

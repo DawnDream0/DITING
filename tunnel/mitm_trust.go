@@ -68,19 +68,27 @@ var (
 	upstreamPool     *x509.CertPool
 )
 
+// buildUpstreamRootPool constructs the upstream trust store, returning the pool
+// and how many of the bundled roots were appended (AppendCertsFromPEM returns
+// false for PEM that fails to parse as a valid certificate).
+func buildUpstreamRootPool() (*x509.CertPool, int) {
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		logf("MITM trust: SystemCertPool unavailable (%v); using bundled roots only", err)
+		pool = x509.NewCertPool()
+	}
+	added := 0
+	for _, pem := range []string{isrgRootX1PEM, isrgRootX2PEM} {
+		if pool.AppendCertsFromPEM([]byte(pem)) {
+			added++
+		}
+	}
+	return pool, added
+}
+
 func upstreamRootPool() *x509.CertPool {
 	upstreamPoolOnce.Do(func() {
-		pool, err := x509.SystemCertPool()
-		if err != nil || pool == nil {
-			logf("MITM trust: SystemCertPool unavailable (%v); using bundled roots only", err)
-			pool = x509.NewCertPool()
-		}
-		added := 0
-		for _, pem := range []string{isrgRootX1PEM, isrgRootX2PEM} {
-			if pool.AppendCertsFromPEM([]byte(pem)) {
-				added++
-			}
-		}
+		pool, added := buildUpstreamRootPool()
 		logf("MITM trust: upstream root pool ready (bundled roots added=%d)", added)
 		upstreamPool = pool
 	})

@@ -171,7 +171,9 @@ func parseIPv6Packet(packet []byte, length int) *DNSQueryInfo {
 
 func BuildBlockedResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
-	msg.Unpack(queryInfo.RawDNSPayload)
+	if err := msg.Unpack(queryInfo.RawDNSPayload); err != nil {
+		return nil
+	}
 
 	resp := new(dns.Msg)
 	resp.SetReply(&msg)
@@ -199,7 +201,9 @@ func BuildBlockedResponse(queryInfo *DNSQueryInfo) []byte {
 
 func BuildNXDomainResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
-	msg.Unpack(queryInfo.RawDNSPayload)
+	if err := msg.Unpack(queryInfo.RawDNSPayload); err != nil {
+		return nil
+	}
 
 	resp := new(dns.Msg)
 	resp.SetRcode(&msg, dns.RcodeNameError)
@@ -211,7 +215,9 @@ func BuildNXDomainResponse(queryInfo *DNSQueryInfo) []byte {
 
 func BuildRefusedResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
-	msg.Unpack(queryInfo.RawDNSPayload)
+	if err := msg.Unpack(queryInfo.RawDNSPayload); err != nil {
+		return nil
+	}
 
 	resp := new(dns.Msg)
 	resp.SetRcode(&msg, dns.RcodeRefused)
@@ -223,7 +229,9 @@ func BuildRefusedResponse(queryInfo *DNSQueryInfo) []byte {
 
 func BuildServfailResponse(queryInfo *DNSQueryInfo) []byte {
 	var msg dns.Msg
-	msg.Unpack(queryInfo.RawDNSPayload)
+	if err := msg.Unpack(queryInfo.RawDNSPayload); err != nil {
+		return nil
+	}
 
 	resp := new(dns.Msg)
 	resp.SetRcode(&msg, dns.RcodeServerFailure)
@@ -235,7 +243,9 @@ func BuildServfailResponse(queryInfo *DNSQueryInfo) []byte {
 
 func BuildRedirectResponse(queryInfo *DNSQueryInfo, ip net.IP) []byte {
 	var msg dns.Msg
-	msg.Unpack(queryInfo.RawDNSPayload)
+	if err := msg.Unpack(queryInfo.RawDNSPayload); err != nil {
+		return nil
+	}
 
 	resp := new(dns.Msg)
 	resp.SetReply(&msg)

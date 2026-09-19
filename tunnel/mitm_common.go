@@ -16,13 +16,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
-)
-
-const (
-	dialTimeout     = 5 * time.Second
-	idleTimeout     = 30 * time.Second
-	maxConnLifetime = 3 * time.Minute
 )
 
 type adBlockChecker interface {

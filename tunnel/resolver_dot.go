@@ -166,10 +166,6 @@ func (r *Resolver) dialFreshDoTConn(ctx context.Context, host, targetServer stri
 	}, nil
 }
 
-func (r *Resolver) queryDoT(rawQuery []byte, server string) ([]byte, error) {
-	return r.queryDoTContext(context.Background(), rawQuery, server)
-}
-
 func (r *Resolver) queryDoTContext(ctx context.Context, rawQuery []byte, server string) ([]byte, error) {
 	host := server
 	port := "853"

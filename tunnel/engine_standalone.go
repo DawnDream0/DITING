@@ -45,9 +45,9 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 		if queryType == dns.TypeA {
 			rr, _ := dns.NewRR(fmt.Sprintf("%s 300 IN A %s", r.Question[0].Name, localAssetSynthIP.String()))
 			m.Answer = append(m.Answer, rr)
-		} else if queryType == dns.TypeAAAA {
-
 		}
+		// AAAA queries fall through: the empty NOERROR reply advertises no
+		// IPv6 address for the local asset host.
 		_ = w.WriteMsg(m)
 		e.totalQueries.Add(1)
 		return

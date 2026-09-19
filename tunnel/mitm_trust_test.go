@@ -39,25 +39,16 @@ func TestBundledRootsParse(t *testing.T) {
 }
 
 func TestUpstreamRootPoolIncludesBundled(t *testing.T) {
-	pool := upstreamRootPool()
+	pool, added := buildUpstreamRootPool()
 	if pool == nil {
-		t.Fatal("upstreamRootPool returned nil")
+		t.Fatal("buildUpstreamRootPool returned nil pool")
+	}
+	if added != 2 {
+		t.Errorf("expected both bundled ISRG roots appended to pool, got %d", added)
 	}
 
-	found := 0
-	for _, subj := range pool.Subjects() {
-		var rdn pkix.RDNSequence
-		if _, err := asn1.Unmarshal(subj, &rdn); err != nil {
-			continue
-		}
-		var name pkix.Name
-		name.FillFromRDNSequence(&rdn)
-		if name.CommonName == "ISRG Root X1" || name.CommonName == "ISRG Root X2" {
-			found++
-		}
-	}
-	if found < 2 {
-		t.Errorf("expected both bundled ISRG roots in pool, found %d", found)
+	if upstreamRootPool() == nil {
+		t.Error("upstreamRootPool returned nil")
 	}
 }
 

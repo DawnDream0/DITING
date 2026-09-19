@@ -126,10 +126,8 @@ func (e *Engine) runTcpStackOutboundWriter(p *packetPipe) {
 		if pkt == nil {
 			return
 		}
-		_, err := tun.Write(pkt)
-		if cap(pkt) <= pipePooledMaxPacketBytes && cap(pkt) >= defaultTunMTU {
-			pipePacketPool.Put(pkt[:0])
-		}
+		_, err := tun.Write(pkt.b)
+		pipeBufPut(pkt)
 		if err != nil {
 			dropped++
 			logf("TcpIpStack: TUN write error after %d packets: %v", written, err)

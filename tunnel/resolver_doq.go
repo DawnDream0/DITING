@@ -19,10 +19,6 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-func (r *Resolver) queryDoQ(rawQuery []byte, doqURL string) ([]byte, error) {
-	return r.queryDoQContext(context.Background(), rawQuery, doqURL)
-}
-
 func (r *Resolver) queryDoQContext(ctx context.Context, rawQuery []byte, doqURL string) ([]byte, error) {
 	host, port := parseDoQURL(doqURL)
 	if host == "" {
@@ -84,12 +80,6 @@ func (r *Resolver) queryDoQContext(ctx context.Context, rawQuery []byte, doqURL 
 	}
 
 	return respData, nil
-}
-
-func (r *Resolver) getOrCreateQUICConn(host, port string) (quic.Connection, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
-	defer cancel()
-	return r.getOrCreateQUICConnContext(ctx, host, port)
 }
 
 func (r *Resolver) getOrCreateQUICConnContext(ctx context.Context, host, port string) (quic.Connection, error) {

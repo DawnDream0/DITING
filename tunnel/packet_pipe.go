@@ -20,8 +20,8 @@ const (
 )
 
 type packetPipe struct {
-	inbound  chan []byte
-	outbound chan []byte
+	inbound  chan *pipeBuffer
+	outbound chan *pipeBuffer
 
 	done     chan struct{}
 	doneOnce sync.Once
@@ -33,27 +33,50 @@ type packetPipe struct {
 
 func newPacketPipe() *packetPipe {
 	return &packetPipe{
-		inbound:  make(chan []byte, packetQueueDepth),
-		outbound: make(chan []byte, packetQueueDepth),
+		inbound:  make(chan *pipeBuffer, packetQueueDepth),
+		outbound: make(chan *pipeBuffer, packetQueueDepth),
 		done:     make(chan struct{}),
 	}
 }
 
 const pipePooledMaxPacketBytes = 2 * defaultTunMTU
 
+// pipeBuffer wraps pooled packet storage so the pool holds a pointer. Storing
+// bare []byte values forces an interface-box allocation on every Get/Put.
+type pipeBuffer struct {
+	b []byte
+}
+
 var pipePacketPool = sync.Pool{
 	New: func() any {
-		return make([]byte, defaultTunMTU)
+		return &pipeBuffer{b: make([]byte, defaultTunMTU)}
 	},
+}
+
+func pipeBufGet(size int) *pipeBuffer {
+	pb := pipePacketPool.Get().(*pipeBuffer)
+	if cap(pb.b) < size {
+		pb.b = make([]byte, size)
+	} else {
+		pb.b = pb.b[:size]
+	}
+	return pb
+}
+
+// pipeBufPut recycles a buffer unless it is outside the pooled size class
+// (smaller than one MTU or grown past the pool maximum); the GC reclaims those.
+func pipeBufPut(pb *pipeBuffer) {
+	if cap(pb.b) > pipePooledMaxPacketBytes || cap(pb.b) < defaultTunMTU {
+		return
+	}
+	pipePacketPool.Put(pb)
 }
 
 func (p *packetPipe) Read(buf []byte) (int, error) {
 	select {
 	case pkt := <-p.inbound:
-		n := copy(buf, pkt)
-		if cap(pkt) <= pipePooledMaxPacketBytes && cap(pkt) >= defaultTunMTU {
-			pipePacketPool.Put(pkt[:0])
-		}
+		n := copy(buf, pkt.b)
+		pipeBufPut(pkt)
 		return n, nil
 	case <-p.done:
 		return 0, io.EOF
@@ -61,22 +84,19 @@ func (p *packetPipe) Read(buf []byte) (int, error) {
 }
 
 func (p *packetPipe) Write(buf []byte) (int, error) {
-	var pkt []byte
-	pooled := false
+	var pkt *pipeBuffer
 	if len(buf) <= pipePooledMaxPacketBytes {
-		pooledBuf := pipePacketPool.Get().([]byte)
-		pkt = append(pooledBuf[:0], buf...)
-		pooled = true
+		pkt = pipeBufGet(len(buf))
+		copy(pkt.b, buf)
 	} else {
-		pkt = make([]byte, len(buf))
-		copy(pkt, buf)
+		// Oversized packets bypass the pool: their buffers are not recycled.
+		pkt = &pipeBuffer{b: make([]byte, len(buf))}
+		copy(pkt.b, buf)
 	}
 
 	select {
 	case <-p.done:
-		if pooled {
-			pipePacketPool.Put(pkt[:0])
-		}
+		pipeBufPut(pkt)
 		return len(buf), nil
 	default:
 	}
@@ -87,13 +107,9 @@ func (p *packetPipe) Write(buf []byte) (int, error) {
 			logf("packetPipe: outbound write #%d (size=%d)", c, len(buf))
 		}
 	case <-p.done:
-		if pooled {
-			pipePacketPool.Put(pkt[:0])
-		}
+		pipeBufPut(pkt)
 	default:
-		if pooled {
-			pipePacketPool.Put(pkt[:0])
-		}
+		pipeBufPut(pkt)
 
 		c := p.outboundDropped.Add(1)
 		if c <= 3 {
@@ -110,27 +126,22 @@ func (p *packetPipe) Push(pkt []byte) {
 	default:
 	}
 
-	var buf []byte
-	pooled := false
+	var buf *pipeBuffer
 	if len(pkt) <= pipePooledMaxPacketBytes {
-		pooledBuf := pipePacketPool.Get().([]byte)
-		buf = append(pooledBuf[:0], pkt...)
-		pooled = true
+		buf = pipeBufGet(len(pkt))
+		copy(buf.b, pkt)
 	} else {
-		buf = make([]byte, len(pkt))
-		copy(buf, pkt)
+		// Oversized packets bypass the pool: their buffers are not recycled.
+		buf = &pipeBuffer{b: make([]byte, len(pkt))}
+		copy(buf.b, pkt)
 	}
 
 	select {
 	case p.inbound <- buf:
 	case <-p.done:
-		if pooled {
-			pipePacketPool.Put(buf[:0])
-		}
+		pipeBufPut(buf)
 	default:
-		if pooled {
-			pipePacketPool.Put(buf[:0])
-		}
+		pipeBufPut(buf)
 
 		c := p.inboundDropped.Add(1)
 		if c <= 3 {
@@ -139,7 +150,7 @@ func (p *packetPipe) Push(pkt []byte) {
 	}
 }
 
-func (p *packetPipe) Pop() []byte {
+func (p *packetPipe) Pop() *pipeBuffer {
 	select {
 	case pkt := <-p.outbound:
 		return pkt

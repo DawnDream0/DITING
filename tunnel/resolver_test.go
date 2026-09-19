@@ -118,6 +118,17 @@ func makeAnswerHandler(ip string, delay time.Duration) dns.HandlerFunc {
 	}
 }
 
+func makeNXDomainHandler(delay time.Duration) dns.HandlerFunc {
+	return func(w dns.ResponseWriter, r *dns.Msg) {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		m := new(dns.Msg)
+		m.SetRcode(r, dns.RcodeNameError)
+		_ = w.WriteMsg(m)
+	}
+}
+
 func TestProviderStats_EWMA(t *testing.T) {
 	stats := newProviderStats()
 	if stats.Score() != defaultEWMA {
@@ -223,6 +234,49 @@ func TestResolver_PrimaryBackupMode(t *testing.T) {
 	}
 	if !res.fallbackUsed || !res.fallbackSuccess || res.winnerProviderID != "p2" {
 		t.Errorf("Unexpected race log result: %+v", res)
+	}
+}
+
+func TestResolver_PrimaryBackupNXDomainPassThrough(t *testing.T) {
+
+	srv1, addr1 := startMockDNSServer(t, makeNXDomainHandler(0))
+	defer srv1.Shutdown()
+
+	srv2, addr2 := startMockDNSServer(t, makeAnswerHandler("9.9.9.9", 0))
+	defer srv2.Shutdown()
+
+	logger := &mockRaceLogger{}
+	resolver := NewResolver(nil)
+	resolver.SetRaceLogCallback(logger)
+
+	err := resolver.ConfigureProviders("primary_backup", []dnsProviderConfig{
+		{ID: "p1", Protocol: "PLAIN", Server: addr1},
+		{ID: "p2", Protocol: "PLAIN", Server: addr2},
+	})
+	if err != nil {
+		t.Fatalf("ConfigureProviders failed: %v", err)
+	}
+
+	rawQuery := makeQueryMsg("missing.example.com")
+	resp, err := resolver.Resolve(rawQuery)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+
+	var respMsg dns.Msg
+	if err := respMsg.Unpack(resp); err != nil {
+		t.Fatalf("Unpack response failed: %v", err)
+	}
+	if respMsg.Rcode != dns.RcodeNameError {
+		t.Fatalf("expected NXDOMAIN passthrough, got rcode %d", respMsg.Rcode)
+	}
+
+	res := logger.lastResult()
+	if res == nil {
+		t.Fatalf("Expected race log result, got nil")
+	}
+	if res.fallbackUsed || res.winnerProviderID != "p1" {
+		t.Errorf("NXDOMAIN must not trigger fallback, got: %+v", res)
 	}
 }
 

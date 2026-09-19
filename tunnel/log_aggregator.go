@@ -93,13 +93,6 @@ func (a *logAggregator) droppedCount() uint64 {
 	return a.droppedLogs.Load()
 }
 
-func (a *logAggregator) droppedConnCount() uint64 {
-	if a == nil {
-		return 0
-	}
-	return a.droppedConnLogs.Load()
-}
-
 func (a *logAggregator) start() {
 	if a == nil || a.running.Swap(true) {
 		return

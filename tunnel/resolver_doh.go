@@ -42,10 +42,6 @@ func buildDoHClient(outbound flowOutbound, bootstrap *bootstrapResolver) *http.C
 	}
 }
 
-func (r *Resolver) queryDoH(rawQuery []byte, dohURL string) ([]byte, error) {
-	return r.queryDoHContext(context.Background(), rawQuery, dohURL)
-}
-
 func (r *Resolver) queryDoHContext(ctx context.Context, rawQuery []byte, dohURL string) ([]byte, error) {
 	if dohURL == "" {
 		return nil, fmt.Errorf("DoH URL not configured")

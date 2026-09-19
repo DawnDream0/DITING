@@ -3,7 +3,6 @@
 // Mobile Network Optimization:
 // - Performs initial UDP queries with bounded timeouts (1.5s) to mitigate mobile packet loss,
 //   retrying if time permits before falling back to TCP.
-// - Uses protectedDialer to ensure raw socket connections bypass the VPN TUN routing loop.
 
 package tunnel
 
@@ -108,10 +107,6 @@ func (r *Resolver) queryPlainContext(ctx context.Context, rawQuery []byte, serve
 	return buf[:n], nil
 }
 
-func queryPlainTCP(ctx context.Context, outbound flowOutbound, rawQuery []byte, server string) ([]byte, error) {
-	return queryPlainTCPContext(ctx, outbound, rawQuery, server)
-}
-
 func queryPlainTCPContext(ctx context.Context, outbound flowOutbound, rawQuery []byte, server string) ([]byte, error) {
 	dialCtx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
@@ -160,33 +155,4 @@ func queryPlainTCPContext(ctx context.Context, outbound flowOutbound, rawQuery [
 		return nil, fmt.Errorf("plain TCP read: %w", err)
 	}
 	return response, nil
-}
-
-type protectedDialer struct {
-	protectFn func(fd int) bool
-}
-
-func (d *protectedDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	dialer := &net.Dialer{Timeout: connectTimeout}
-	conn, err := dialer.DialContext(ctx, network, addr)
-	if err != nil {
-		return nil, err
-	}
-
-	if d.protectFn != nil {
-		var rawConn interface{ Control(func(fd uintptr)) error }
-		switch c := conn.(type) {
-		case *net.TCPConn:
-			rawConn, _ = c.SyscallConn()
-		case *net.UDPConn:
-			rawConn, _ = c.SyscallConn()
-		}
-		if rawConn != nil {
-			rawConn.Control(func(fd uintptr) {
-				d.protectFn(int(fd))
-			})
-		}
-	}
-
-	return conn, nil
 }

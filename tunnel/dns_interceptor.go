@@ -101,36 +101,6 @@ func (i *DnsInterceptor) IsRunning() bool {
 	return i.running
 }
 
-func isUDP443Packet(packet []byte, length int) bool {
-	if length < ipv4HeaderSize+udpHeaderSize {
-		return false
-	}
-	version := packet[0] >> 4
-	switch version {
-	case 4:
-		if packet[9] != 17 {
-			return false
-		}
-		ihl := int(packet[0]&0x0F) * 4
-		if length < ihl+udpHeaderSize {
-			return false
-		}
-		destPort := binary.BigEndian.Uint16(packet[ihl+2 : ihl+4])
-		return destPort == 443
-	case 6:
-		if length < ipv6HeaderSize+udpHeaderSize {
-			return false
-		}
-		if packet[6] != 17 {
-			return false
-		}
-		destPort := binary.BigEndian.Uint16(packet[ipv6HeaderSize+2 : ipv6HeaderSize+4])
-		return destPort == 443
-	default:
-		return false
-	}
-}
-
 func isDNSPacket(packet []byte, length int) bool {
 	if length < ipv4HeaderSize+udpHeaderSize {
 		return false

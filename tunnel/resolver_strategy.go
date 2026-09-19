@@ -20,14 +20,6 @@ import (
 
 const predictionBackupDelay = 50 * time.Millisecond
 
-func extractDomain(rawQuery []byte) string {
-	var msg dns.Msg
-	if err := msg.Unpack(rawQuery); err != nil || len(msg.Question) == 0 {
-		return ""
-	}
-	return strings.TrimSuffix(strings.ToLower(msg.Question[0].Name), ".")
-}
-
 func extractQueryInfo(rawQuery []byte) (string, uint16) {
 	var msg dns.Msg
 	if err := msg.Unpack(rawQuery); err != nil || len(msg.Question) == 0 {
@@ -274,10 +266,10 @@ func (r *Resolver) resolveSmartPrediction(rawQuery []byte, queryName string, que
 				backupTimer.Stop()
 				triggerBackups()
 			}
+			// A failed primary always triggers the backups above, so once all
+			// spawned queries have failed there is nothing left to wait for.
 			if fallbackTriggered && completed >= expected {
 				goto DONE
-			} else if !fallbackTriggered && completed >= 1 {
-
 			}
 		}
 	}
@@ -388,5 +380,13 @@ func validateDNSResponse(rawQuery, rawResponse []byte) error {
 			return fmt.Errorf("DNS response question mismatch")
 		}
 	}
-	return nil
+	// Upstream failure codes must be treated as provider failure so failover
+	// strategies escalate to the next provider. NXDOMAIN is a valid negative
+	// answer and must NOT trigger fallback.
+	switch response.Rcode {
+	case dns.RcodeSuccess, dns.RcodeNameError:
+		return nil
+	default:
+		return fmt.Errorf("upstream returned %s", dns.RcodeToString[response.Rcode])
+	}
 }

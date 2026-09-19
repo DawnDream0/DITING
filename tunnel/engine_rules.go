@@ -228,18 +228,3 @@ func (e *Engine) IsDomainBlockedForApp(host string, appName string) bool {
 	blocked, _ := e.checkDomainBlockedAndReason(host, appName)
 	return blocked
 }
-
-func (e *Engine) httpBlockReason(host string) string {
-	return e.httpBlockReasonForApp(host, "")
-}
-
-func (e *Engine) httpBlockReasonForApp(host string, appName string) string {
-	if e == nil {
-		return "filter_list"
-	}
-	_, reason := e.checkDomainBlockedAndReason(host, appName)
-	if reason == "" {
-		return "filter_list"
-	}
-	return reason
-}
