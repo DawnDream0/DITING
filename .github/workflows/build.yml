@@ -44,6 +44,7 @@ jobs:
         run: |
           cd tunnel
           export PATH="$HOME/go/bin:$PATH"
+          go build ./... 2>&1 || true
           go run github.com/sagernet/gomobile/cmd/gomobile init
           go run github.com/sagernet/gomobile/cmd/gomobile bind -target=android/arm64 -androidapi 29 \
             -o ../app/libs/tunnel.aar \
