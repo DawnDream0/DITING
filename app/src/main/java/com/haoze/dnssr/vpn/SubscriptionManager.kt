@@ -245,17 +245,22 @@ class SubscriptionManager(
             saved = subscription.copy(id = id)
             _importingSubscriptionId.value = id
 
+            val badfilterKeys = contentLoader().buffered().use { reader ->
+                AdGuardRuleParser.extractBadfilterKeys(reader)
+            }
+
             val total = contentLoader().buffered().use { reader ->
-                CategorizedRuleStreamImporter.countRules(reader)
+                CategorizedRuleStreamImporter.countRules(reader, badfilterKeys)
             }
 
             val summary = contentLoader().buffered().use { reader ->
                 ruleStreamer.import(
-                    reader,
-                    ruleStorage.sourceTag(id),
-                    normalizedKind,
+                    reader = reader,
+                    source = ruleStorage.sourceTag(id),
+                    kind = normalizedKind,
                     enabled = true,
                     totalHint = total,
+                    badfilterKeys = badfilterKeys,
                     onEmpty = { typeMismatchOnly ->
                         throw SubscriptionUpdateException(
                             if (typeMismatchOnly) {

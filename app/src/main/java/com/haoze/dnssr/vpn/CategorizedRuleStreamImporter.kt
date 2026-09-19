@@ -24,11 +24,17 @@ internal class CategorizedRuleStreamImporter(
     companion object {
         const val CHUNK_SIZE = 1000
 
-        fun countRules(reader: BufferedReader): Int {
+        fun countRules(reader: BufferedReader, badfilterKeys: Set<String> = emptySet()): Int {
             var count = 0
             reader.forEachLine { line ->
                 val parsed = AdGuardRuleParser.parseCategorizedLine(line)
-                count += parsed.blockRules.size + parsed.allowRules.size + parsed.rewriteRules.size
+                if (badfilterKeys.isEmpty()) {
+                    count += parsed.blockRules.size + parsed.allowRules.size + parsed.rewriteRules.size
+                } else {
+                    count += parsed.blockRules.count { AdGuardRuleParser.blockRuleKey(it) !in badfilterKeys } +
+                        parsed.allowRules.count { AdGuardRuleParser.allowRuleKey(it) !in badfilterKeys } +
+                        parsed.rewriteRules.count { AdGuardRuleParser.rewriteRuleKey(it) !in badfilterKeys }
+                }
             }
             return count
         }
@@ -54,6 +60,7 @@ internal class CategorizedRuleStreamImporter(
         enabled: Boolean,
         refreshCache: Boolean = false,
         totalHint: Int = 0,
+        badfilterKeys: Set<String> = emptySet(),
         onEmpty: (typeMismatchOnly: Boolean) -> Nothing,
         onProgress: (suspend (processed: Int, total: Int) -> Unit)? = null
     ): RuleImportSummary {
@@ -71,6 +78,7 @@ internal class CategorizedRuleStreamImporter(
         var insertedAllow = 0
         var insertedRewrite = 0
         var parsedRules = 0
+        var badfiltered = 0
         var invalid = 0
         var unsupported = 0
         var typeSkipped = 0
@@ -112,16 +120,28 @@ internal class CategorizedRuleStreamImporter(
                 val lineRuleCount = parsed.blockRules.size + parsed.allowRules.size + parsed.rewriteRules.size
                 parsedRules += lineRuleCount
                 for (rule in parsed.blockRules) {
-                    blockBatch += rule
-                    if (blockBatch.size == chunkSize) flushBlock()
+                    if (badfilterKeys.isNotEmpty() && AdGuardRuleParser.blockRuleKey(rule) in badfilterKeys) {
+                        badfiltered++
+                    } else {
+                        blockBatch += rule
+                        if (blockBatch.size == chunkSize) flushBlock()
+                    }
                 }
                 for (rule in parsed.allowRules) {
-                    allowBatch += rule
-                    if (allowBatch.size == chunkSize) flushAllow()
+                    if (badfilterKeys.isNotEmpty() && AdGuardRuleParser.allowRuleKey(rule) in badfilterKeys) {
+                        badfiltered++
+                    } else {
+                        allowBatch += rule
+                        if (allowBatch.size == chunkSize) flushAllow()
+                    }
                 }
                 for (rule in parsed.rewriteRules) {
-                    rewriteBatch += rule
-                    if (rewriteBatch.size == chunkSize) flushRewrite()
+                    if (badfilterKeys.isNotEmpty() && AdGuardRuleParser.rewriteRuleKey(rule) in badfilterKeys) {
+                        badfiltered++
+                    } else {
+                        rewriteBatch += rule
+                        if (rewriteBatch.size == chunkSize) flushRewrite()
+                    }
                 }
             }
         }
@@ -137,10 +157,42 @@ internal class CategorizedRuleStreamImporter(
             blockCount = insertedBlock,
             allowCount = insertedAllow,
             rewriteCount = insertedRewrite,
-            duplicateCount = (parsedRules - totalInserted).coerceAtLeast(0),
+            duplicateCount = (parsedRules - totalInserted - badfiltered).coerceAtLeast(0),
             invalidCount = invalid,
             unsupportedCount = unsupported,
-            typeSkippedCount = typeSkipped
+            typeSkippedCount = typeSkipped,
+            badfilteredCount = badfiltered
         )
+    }
+
+    /**
+     * Performs a two-pass import on a reusable reader provider:
+     * 1. First pass scans for any `$badfilter` keys.
+     * 2. Second pass parses and imports rules, skipping those invalidated by badfilter.
+     */
+    suspend fun importTwoPass(
+        openReader: () -> BufferedReader,
+        source: String,
+        kind: String,
+        enabled: Boolean,
+        refreshCache: Boolean = false,
+        totalHint: Int = 0,
+        onEmpty: (typeMismatchOnly: Boolean) -> Nothing,
+        onProgress: (suspend (processed: Int, total: Int) -> Unit)? = null
+    ): RuleImportSummary {
+        val badfilterKeys = openReader().use { AdGuardRuleParser.extractBadfilterKeys(it) }
+        return openReader().use { reader ->
+            import(
+                reader = reader,
+                source = source,
+                kind = kind,
+                enabled = enabled,
+                refreshCache = refreshCache,
+                totalHint = totalHint,
+                badfilterKeys = badfilterKeys,
+                onEmpty = onEmpty,
+                onProgress = onProgress
+            )
+        }
     }
 }

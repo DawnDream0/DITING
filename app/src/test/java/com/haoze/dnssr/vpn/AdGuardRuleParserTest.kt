@@ -189,4 +189,121 @@ class AdGuardRuleParserTest {
         assertEquals(1, removeparamLine.ignoredCount)
         assertEquals(0, webOnlyLine.blockRules.size)
     }
+
+    @Test
+    fun badfilterDisablesTargetBlockRule() {
+        val text = """
+            ||example.com^
+            ||example.com^${'$'}badfilter
+        """.trimIndent()
+
+        val categorized = AdGuardRuleParser.parseCategorized(text)
+        assertEquals(0, categorized.blockRules.size)
+        assertEquals(1, categorized.badfilteredCount)
+
+        // Verify order independence: badfilter defined before the target rule
+        val reversedText = """
+            ||example.com^${'$'}badfilter
+            ||example.com^
+        """.trimIndent()
+        val revCategorized = AdGuardRuleParser.parseCategorized(reversedText)
+        assertEquals(0, revCategorized.blockRules.size)
+        assertEquals(1, revCategorized.badfilteredCount)
+    }
+
+    @Test
+    fun badfilterAllowOnlyDisablesAllowRule() {
+        // White list badfilter only disables allow rule, not block rule
+        val text = """
+            ||example.com^
+            @@||example.com^
+            @@||example.com^${'$'}badfilter
+        """.trimIndent()
+
+        val categorized = AdGuardRuleParser.parseCategorized(text)
+        assertEquals(1, categorized.blockRules.size)
+        assertEquals("example.com", categorized.blockRules[0].pattern)
+        assertEquals(0, categorized.allowRules.size)
+        assertEquals(1, categorized.badfilteredCount)
+
+        // Block badfilter only disables block rule, not allow rule
+        val text2 = """
+            ||example.com^
+            @@||example.com^
+            ||example.com^${'$'}badfilter
+        """.trimIndent()
+        val categorized2 = AdGuardRuleParser.parseCategorized(text2)
+        assertEquals(0, categorized2.blockRules.size)
+        assertEquals(1, categorized2.allowRules.size)
+        assertEquals("example.com", categorized2.allowRules[0].pattern)
+        assertEquals(1, categorized2.badfilteredCount)
+    }
+
+    @Test
+    fun badfilterWildcardAndRewriteRules() {
+        val text = """
+            ||*-analytics.google.com^
+            ||*-analytics.google.com^${'$'}badfilter
+            ||rewrite.example.com^${'$'}dnsrewrite=1.2.3.4
+            ||rewrite.example.com^${'$'}dnsrewrite=1.2.3.4,badfilter
+            ||rewrite.keep.com^${'$'}dnsrewrite=1.2.3.4
+            ||rewrite.keep.com^${'$'}dnsrewrite=5.6.7.8,badfilter
+        """.trimIndent()
+
+        val categorized = AdGuardRuleParser.parseCategorized(text)
+        assertEquals(0, categorized.blockRules.size)
+        assertEquals(1, categorized.rewriteRules.size)
+        assertEquals("rewrite.keep.com", categorized.rewriteRules[0].pattern)
+        assertEquals("1.2.3.4", categorized.rewriteRules[0].targetValue)
+        assertEquals(2, categorized.badfilteredCount)
+    }
+
+    @Test
+    fun nonMatchingBadfilterDoesNotAffectOtherRules() {
+        val text = """
+            ||ads.net^${'$'}important
+            ||ads.net^${'$'}badfilter
+            ||tracker.com^${'$'}app=com.app1
+            ||tracker.com^${'$'}app=com.app2,badfilter
+            ||unrelated.com^
+            ||other.com^${'$'}badfilter
+        """.trimIndent()
+
+        val categorized = AdGuardRuleParser.parseCategorized(text)
+        assertEquals(3, categorized.blockRules.size)
+        assertEquals(0, categorized.badfilteredCount)
+
+        // Matching important and appScope
+        val matchingText = """
+            ||ads.net^${'$'}important
+            ||ads.net^${'$'}important,badfilter
+            ||tracker.com^${'$'}app=com.app1
+            ||tracker.com^${'$'}app=com.app1,badfilter
+        """.trimIndent()
+        val matchingCat = AdGuardRuleParser.parseCategorized(matchingText)
+        assertEquals(0, matchingCat.blockRules.size)
+        assertEquals(2, matchingCat.badfilteredCount)
+    }
+
+    @Test
+    fun extractBadfilterKeysExtractsExpectedKeys() {
+        val text = """
+            ! comment with ${'$'}badfilter
+            ||example.com^${'$'}badfilter
+            @@||allow.com^${'$'}badfilter
+            ||rewrite.com^${'$'}dnsrewrite=1.2.3.4,badfilter
+            ||invalid...^${'$'}badfilter
+            ||web.com/ads.js${'$'}script,badfilter
+        """.trimIndent()
+
+        val keys = AdGuardRuleParser.extractBadfilterKeys(text)
+        assertEquals(
+            setOf(
+                "block:example.com:false:null:false",
+                "allow:allow.com:false:null:false",
+                "rewrite:rewrite.com:IPv4:1.2.3.4"
+            ),
+            keys
+        )
+    }
 }

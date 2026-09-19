@@ -323,9 +323,10 @@ class RuleOperationWorker(
         RuleOperationType.IMPORT_RULES -> {
             val kind = requestedSubscriptionKind()
             val uri = requiredUri()
-            val total = openUriReader(uri).use { CategorizedRuleStreamImporter.countRules(it) }
+            val badfilterKeys = openUriReader(uri).use { AdGuardRuleParser.extractBadfilterKeys(it) }
+            val total = openUriReader(uri).use { CategorizedRuleStreamImporter.countRules(it, badfilterKeys) }
             val msg = openUriReader(uri).use { reader ->
-                importCategorizedRules(reader, blockManager, allowManager, rewriteManager, type, kind, total)
+                importCategorizedRules(reader, blockManager, allowManager, rewriteManager, type, kind, total, badfilterKeys)
             }.displayMessage("导入完成")
             OperationExecutionResult(msg)
         }
@@ -383,7 +384,8 @@ class RuleOperationWorker(
         rewriteManager: RewriteRuleManager,
         type: RuleOperationType,
         kind: String,
-        total: Int
+        total: Int,
+        badfilterKeys: Set<String> = emptySet()
     ): RuleImportSummary {
         val importer = CategorizedRuleStreamImporter(blockManager, allowManager, rewriteManager, IMPORT_CHUNK_SIZE)
         return importer.import(
@@ -393,6 +395,7 @@ class RuleOperationWorker(
             enabled = true,
             refreshCache = true,
             totalHint = total,
+            badfilterKeys = badfilterKeys,
             onProgress = { processed, totalHint ->
                 setProgressAsync(progressData(type, -1, processed, totalHint))
                 notifyProgress(titleFor(type), processed, totalHint)

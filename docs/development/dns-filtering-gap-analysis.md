@@ -92,7 +92,7 @@ VPN 模式下的完整链路:
 | 正则规则 `/…/` | :327-329 | 直接 unsupported。AdGuard DNS 过滤支持正则 |
 | `$dnstype=` | :408-410 | 落入未知修饰符分支丢弃。AdGuard 支持(如 `$dnstype=AAAA` 禁 IPv6 解析) |
 | `$denyallow=` | :91-96(误归入 web-only 前缀表) | AdGuard **DNS 过滤明确支持** `$denyallow`(拦截 A 域但排除 B 域),谛听把含它的整条规则当 web 规则丢弃 |
-| `$badfilter` | :397-400 | 整行忽略,没有与目标规则的对账剔除逻辑 |
+| `$badfilter` | :397-400 | 已修复(2026-09-19, P0-B):两遍预扫描与归一化 key 对账剔除 |
 | `\|x\|` 绝对锚点 | :417 | unsupported |
 | `$client=` 等其它修饰符 | :408-410 | 丢弃(对 DNS 场景影响小,可接受) |
 
@@ -200,6 +200,8 @@ else -> return CategorizedLine(unsupportedCount = 1)
 
 ### P0-B:$badfilter 对账(Kotlin 侧)
 
+> **状态:已修复**(2026-09-19 实施;`AdGuardRuleParser.kt` 规则对账剔除 + `CategorizedRuleStreamImporter.kt` 两遍流式导入与预扫描 + 单元测试覆盖)。
+
 **方案**:
 
 1. `AdGuardRuleParser.kt`:`badfilter` token 不再直接 ignored,产出归一化 badfilter 条目(维度:allow/block + pattern + important + appScope + appInverted);新增 `extractBadfilterKeys(text): Set<String>`(仅扫含 `$badfilter` 的行,开销小);`parseCategorized` 在分类后剔除 key 命中的 block/allow/rewrite 规则,计入新统计 `badfilteredCount`。key 复用现有去重 key 格式,`@@` 与黑名单分开键控(AdGuard 语义:badfilter 文本与目标规则文本一致才剔除)。
@@ -275,7 +277,7 @@ else -> return CategorizedLine(unsupportedCount = 1)
 | 通配符 `*` / `*.base` | 支持 | 支持 | 无 |
 | `$dnsrewrite=IP/CNAME/NXDOMAIN/…` | 支持 | 支持 | 无 |
 | `$app=`(谛听扩展,对应 AdGuard 客户端维度) | — | 支持 | 无 |
-| `$badfilter` | 支持(剔除目标规则) | **忽略** | 有(P0-B) |
+| `$badfilter` | 支持(剔除目标规则) | 支持(已修复 P0-B) | 无 |
 | `$denyallow=` | 支持 | **误当 web-only 丢弃** | 有(P1) |
 | 正则 `/…/` | 支持 | **丢弃** | 有(P1) |
 | `$dnstype=` | 支持 | **丢弃** | 有(P1) |

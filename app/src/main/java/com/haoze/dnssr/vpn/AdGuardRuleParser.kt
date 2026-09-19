@@ -69,6 +69,7 @@ object AdGuardRuleParser {
         val invalidCount: Int = 0,
         val unsupportedCount: Int = 0,
         val ignoredCount: Int = 0,
+        val badfilteredCount: Int = 0,
         val totalLines: Int = 0
     ) {
         val size: Int get() = blockRules.size + allowRules.size + rewriteRules.size
@@ -80,10 +81,29 @@ object AdGuardRuleParser {
         val blockRules: List<ParsedRule> = emptyList(),
         val allowRules: List<ParsedRule> = emptyList(),
         val rewriteRules: List<RewriteRule> = emptyList(),
+        val badfilterKeys: Set<String> = emptySet(),
         val invalidCount: Int = 0,
         val unsupportedCount: Int = 0,
         val ignoredCount: Int = 0
     )
+
+    fun blockRuleKey(pattern: String, important: Boolean, appScope: String?, appInverted: Boolean): String =
+        "block:$pattern:$important:$appScope:$appInverted"
+
+    fun blockRuleKey(rule: ParsedRule): String =
+        blockRuleKey(rule.pattern, rule.important, rule.appScope, rule.appInverted)
+
+    fun allowRuleKey(pattern: String, important: Boolean, appScope: String?, appInverted: Boolean): String =
+        "allow:$pattern:$important:$appScope:$appInverted"
+
+    fun allowRuleKey(rule: ParsedRule): String =
+        allowRuleKey(rule.pattern, rule.important, rule.appScope, rule.appInverted)
+
+    fun rewriteRuleKey(pattern: String, targetType: String, targetValue: String): String =
+        "rewrite:$pattern:$targetType:$targetValue"
+
+    fun rewriteRuleKey(rule: RewriteRule): String =
+        rewriteRuleKey(rule.pattern, rule.targetType, rule.targetValue)
 
     private val SINKHOLE_ADDRESSES = setOf("0", "0.0.0.0", "127.0.0.1", "::", "::1")
     private val DOMAIN_LABEL = Regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -117,7 +137,24 @@ object AdGuardRuleParser {
     /** Manual allow entry accepts either an exception rule or a plain domain. */
     fun parseAllowLine(line: String): ParsedRule? = parseSingle(line, allowRule = true)
 
+    fun extractBadfilterKeys(lines: Sequence<String>): Set<String> {
+        val keys = LinkedHashSet<String>()
+        for (line in lines) {
+            if (!line.contains("badfilter", ignoreCase = true)) continue
+            val parsed = parseCategorizedLine(line)
+            keys.addAll(parsed.badfilterKeys)
+        }
+        return keys
+    }
+
+    fun extractBadfilterKeys(text: String): Set<String> =
+        extractBadfilterKeys(text.lineSequence())
+
+    fun extractBadfilterKeys(reader: java.io.BufferedReader): Set<String> =
+        extractBadfilterKeys(reader.lineSequence())
+
     fun parseCategorized(text: String): CategorizedRules {
+        val badfilterKeys = extractBadfilterKeys(text)
         val blockRules = LinkedHashMap<String, ParsedRule>()
         val allowRules = LinkedHashMap<String, ParsedRule>()
         val rewriteRules = LinkedHashMap<String, RewriteRule>()
@@ -135,16 +172,44 @@ object AdGuardRuleParser {
             ignored += lineResult.ignoredCount
 
             for (rule in lineResult.blockRules) {
-                val key = "${rule.pattern}:${rule.important}:${rule.appScope}:${rule.appInverted}"
+                val key = blockRuleKey(rule)
                 if (blockRules.putIfAbsent(key, rule) != null) duplicates++
             }
             for (rule in lineResult.allowRules) {
-                val key = "${rule.pattern}:${rule.important}:${rule.appScope}:${rule.appInverted}"
+                val key = allowRuleKey(rule)
                 if (allowRules.putIfAbsent(key, rule) != null) duplicates++
             }
             for (rule in lineResult.rewriteRules) {
-                val key = "${rule.pattern}:${rule.targetType}:${rule.targetValue}"
+                val key = rewriteRuleKey(rule)
                 if (rewriteRules.putIfAbsent(key, rule) != null) duplicates++
+            }
+        }
+
+        var badfilteredCount = 0
+        if (badfilterKeys.isNotEmpty()) {
+            val blockIter = blockRules.iterator()
+            while (blockIter.hasNext()) {
+                val entry = blockIter.next()
+                if (entry.key in badfilterKeys) {
+                    blockIter.remove()
+                    badfilteredCount++
+                }
+            }
+            val allowIter = allowRules.iterator()
+            while (allowIter.hasNext()) {
+                val entry = allowIter.next()
+                if (entry.key in badfilterKeys) {
+                    allowIter.remove()
+                    badfilteredCount++
+                }
+            }
+            val rewriteIter = rewriteRules.iterator()
+            while (rewriteIter.hasNext()) {
+                val entry = rewriteIter.next()
+                if (entry.key in badfilterKeys) {
+                    rewriteIter.remove()
+                    badfilteredCount++
+                }
             }
         }
 
@@ -156,6 +221,7 @@ object AdGuardRuleParser {
             invalidCount = invalid,
             unsupportedCount = unsupported,
             ignoredCount = ignored,
+            badfilteredCount = badfilteredCount,
             totalLines = total
         )
     }
@@ -334,6 +400,7 @@ object AdGuardRuleParser {
         var dnsrewriteTargetType: String? = null
         var dnsrewriteTargetValue: String? = null
         var dnsrewriteIsBlock = false
+        var isBadfilter = false
 
         val modifierIndex = value.indexOf('$')
         if (modifierIndex >= 0) {
@@ -395,8 +462,7 @@ object AdGuardRuleParser {
                         }
                     }
                     lower == "badfilter" -> {
-                        // $badfilter disables existing rules. In DNS filtering, ignore it to avoid blocking.
-                        return CategorizedLine(ignoredCount = 1)
+                        isBadfilter = true
                     }
                     isWebOnlyModifier(lower) -> {
                         // Web/browser-specific modifiers cannot safely trigger whole-domain DNS blocking.
@@ -424,6 +490,18 @@ object AdGuardRuleParser {
         } else {
             normalizeDomain(value)
         } ?: return CategorizedLine(invalidCount = 1)
+
+        if (isBadfilter) {
+            val key = when {
+                dnsrewriteTargetType != null && dnsrewriteTargetValue != null ->
+                    rewriteRuleKey(domain, dnsrewriteTargetType, dnsrewriteTargetValue)
+                dnsrewriteIsBlock || !allow ->
+                    blockRuleKey(domain, important, appScope, appInverted)
+                else ->
+                    allowRuleKey(domain, important, appScope, appInverted)
+            }
+            return CategorizedLine(badfilterKeys = setOf(key))
+        }
 
         if (dnsrewriteTargetType != null && dnsrewriteTargetValue != null) {
             val rule = RewriteRule(domain, dnsrewriteTargetType, dnsrewriteTargetValue, originalLine)

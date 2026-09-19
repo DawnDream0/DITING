@@ -92,8 +92,11 @@ internal class SubscriptionDownloader(
                 tempFile.outputStream().use { out ->
                     body.byteStream().copyTo(out)
                 }
+                val badfilterKeys = tempFile.bufferedReader().use { reader ->
+                    AdGuardRuleParser.extractBadfilterKeys(reader)
+                }
                 val totalRules = tempFile.bufferedReader().use { reader ->
-                    CategorizedRuleStreamImporter.countRules(reader)
+                    CategorizedRuleStreamImporter.countRules(reader, badfilterKeys)
                 }
                 val summary = tempFile.bufferedReader().use { reader ->
                     ruleStreamer.import(
@@ -102,6 +105,7 @@ internal class SubscriptionDownloader(
                         kind = kind,
                         enabled = enabled,
                         totalHint = totalRules,
+                        badfilterKeys = badfilterKeys,
                         onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) },
                         onProgress = onProgressUpdate
                     )
@@ -176,8 +180,11 @@ internal class SubscriptionDownloader(
                 tempFile.outputStream().use { out ->
                     body.byteStream().copyTo(out)
                 }
+                val badfilterKeys = tempFile.bufferedReader().use { reader ->
+                    AdGuardRuleParser.extractBadfilterKeys(reader)
+                }
                 val totalRules = tempFile.bufferedReader().use { reader ->
-                    CategorizedRuleStreamImporter.countRules(reader)
+                    CategorizedRuleStreamImporter.countRules(reader, badfilterKeys)
                 }
                 val summary = tempFile.bufferedReader().use { reader ->
                     ruleStreamer.import(
@@ -186,6 +193,7 @@ internal class SubscriptionDownloader(
                         kind = kind,
                         enabled = enabled,
                         totalHint = totalRules,
+                        badfilterKeys = badfilterKeys,
                         onEmpty = { typeMismatchOnly -> throw emptySourceException(typeMismatchOnly, kind) },
                         onProgress = onProgressUpdate
                     )

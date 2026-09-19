@@ -8,15 +8,17 @@ data class RuleImportSummary(
     val invalidCount: Int,
     val unsupportedCount: Int,
     /** Rules parsed successfully but dropped because they belong to the other subscription type. */
-    val typeSkippedCount: Int = 0
+    val typeSkippedCount: Int = 0,
+    val badfilteredCount: Int = 0
 ) {
     val importedCount: Int get() = blockCount + allowCount + rewriteCount
-    val skippedCount: Int get() = duplicateCount + invalidCount + unsupportedCount + typeSkippedCount
+    val skippedCount: Int get() = duplicateCount + invalidCount + unsupportedCount + typeSkippedCount + badfilteredCount
 
     fun displayMessage(prefix: String): String {
         val base = "$prefix：黑名单 $blockCount 条，白名单 $allowCount 条，覆写 $rewriteCount 条，重复 $duplicateCount 条，" +
             "无效/不支持 ${invalidCount + unsupportedCount} 条"
-        return if (typeSkippedCount > 0) "$base，类型不匹配 $typeSkippedCount 条" else base
+        val withTypeSkipped = if (typeSkippedCount > 0) "$base，类型不匹配 $typeSkippedCount 条" else base
+        return if (badfilteredCount > 0) "$withTypeSkipped，badfilter 剔除 $badfilteredCount 条" else withTypeSkipped
     }
 }
 
