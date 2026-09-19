@@ -28,13 +28,13 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Android SDK + NDK
+      - name: Set up Android SDK
         run: |
           echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
           yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973" || true
-          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/27.0.12077973" >> $GITHUB_ENV
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
 
       - name: Set up Go 1.23
         uses: actions/setup-go@v5
@@ -48,25 +48,23 @@ jobs:
           export PATH="$HOME/go/bin:$PATH"
           export CGO_ENABLED=1
 
-          echo "=== Go version ==="
-          go version
+          # 找到 runner 上已有的 NDK
+          NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/*/ 2>/dev/null | head -1)
+          if [ -z "$NDK_PATH" ]; then
+            echo "Installing NDK..."
+            sdkmanager "ndk;26.3.11579264"
+            NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.3.11579264/"
+          fi
+          export ANDROID_NDK_HOME=${NDK_PATH%/}
+          echo "Using NDK: $ANDROID_NDK_HOME"
+          ls $ANDROID_NDK_HOME/meta/platforms.json
 
-          echo "=== Install gomobile ==="
           go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
-
-          echo "=== gomobile init ==="
           gomobile init
-
-          echo "=== Verify package exports ==="
-          go doc . Engine | head -20
-
-          echo "=== gomobile bind ==="
           gomobile bind -v -target=android/arm64 -androidapi 29 \
-            -o ../app/libs/tunnel.aar \
-            .
-
-          echo "=== Result ==="
+            -o ../app/libs/tunnel.aar .
           ls -lh ../app/libs/tunnel.aar
+
 
       - name: Use official Gradle distribution
         run: |
