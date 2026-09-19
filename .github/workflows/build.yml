@@ -35,6 +35,22 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Build tunnel.aar with gomobile
+        run: |
+          cd tunnel
+          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
+          export PATH="$HOME/go/bin:$PATH"
+          gomobile init
+          gomobile bind -target=android/arm64 -androidapi 29 \
+            -o ../app/libs/tunnel.aar \
+            github.com/nqmgaming/blockads-tunnel/tunnel
+          ls -lh ../app/libs/tunnel.aar
+
       - name: Use official Gradle distribution
         run: |
           sed -i 's|https\\://mirrors.cloud.tencent.com/gradle/gradle-9.4.1-bin.zip|https\\://services.gradle.org/distributions/gradle-9.4.1-bin.zip|' gradle/wrapper/gradle-wrapper.properties
