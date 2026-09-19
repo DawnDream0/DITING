@@ -210,10 +210,7 @@ fun MainScreen(
                         onPageSelected = { targetPage ->
                             if (pagerState.currentPage != targetPage) {
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(
-                                        page = targetPage,
-                                        animationSpec = tween(durationMillis = 280)
-                                    )
+                                    pagerState.scrollToPage(targetPage)
                                 }
                             }
                         },
