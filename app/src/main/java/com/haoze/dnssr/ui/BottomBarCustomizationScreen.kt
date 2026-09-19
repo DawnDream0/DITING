@@ -1,45 +1,48 @@
 package com.haoze.dnssr.ui
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AddCircleOutline
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -180,7 +183,7 @@ fun BottomBarCustomizationScreen(
 
             if (availableItems.isEmpty()) {
                 item {
-                    SettingsInfoText(localizedText("暂无更多可添加的页面"))
+                    SettingsInfoText(localizedText("所有页面均已添加到底栏"))
                 }
             } else {
                 item {
@@ -189,7 +192,15 @@ fun BottomBarCustomizationScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(24.dp))
+                SettingsGroupTitle(localizedText("底栏效果预览"))
+            }
+
+            item {
+                BottomBarPreviewCard(destinations = selectedItems)
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(28.dp))
             }
         }
     }
@@ -211,7 +222,8 @@ private fun SelectedBottomBarItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .heightIn(min = 72.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Index badge
@@ -232,26 +244,37 @@ private fun SelectedBottomBarItemRow(
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
-        // Destination Icon
-        Icon(
-            imageVector = destination.icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp)
-        )
+        // Destination Icon container
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .background(
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    RoundedCornerShape(12.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = destination.icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
 
         // Title and description
         Column(
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = localizedText(destination.title),
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -265,44 +288,45 @@ private fun SelectedBottomBarItemRow(
             )
         }
 
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(6.dp))
 
         // Action buttons
         IconButton(
             onClick = onMoveUp,
             enabled = canMoveUp,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(34.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowUpward,
                 contentDescription = localizedText("向上移动"),
-                tint = if (canMoveUp) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
-                modifier = Modifier.size(20.dp)
+                tint = if (canMoveUp) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                modifier = Modifier.size(19.dp)
             )
         }
 
         IconButton(
             onClick = onMoveDown,
             enabled = canMoveDown,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(34.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowDownward,
                 contentDescription = localizedText("向下移动"),
-                tint = if (canMoveDown) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
-                modifier = Modifier.size(20.dp)
+                tint = if (canMoveDown) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                modifier = Modifier.size(19.dp)
             )
         }
 
         IconButton(
             onClick = onRemove,
-            modifier = Modifier.size(36.dp)
+            enabled = canRemove,
+            modifier = Modifier.size(34.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.DeleteOutline,
                 contentDescription = localizedText("移除"),
-                tint = if (canRemove) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error.copy(alpha = 0.32f),
-                modifier = Modifier.size(20.dp)
+                tint = if (canRemove) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error.copy(alpha = 0.28f),
+                modifier = Modifier.size(19.dp)
             )
         }
     }
@@ -318,25 +342,38 @@ private fun AvailableBottomBarItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .heightIn(min = 72.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = destination.icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp)
-        )
+        // Destination Icon container
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
+                    RoundedCornerShape(12.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = destination.icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
 
         Column(
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = localizedText(destination.title),
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -350,18 +387,158 @@ private fun AvailableBottomBarItemRow(
             )
         }
 
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(6.dp))
 
-        IconButton(
+        FilledTonalIconButton(
             onClick = onAdd,
-            modifier = Modifier.size(36.dp)
+            enabled = canAdd,
+            modifier = Modifier.size(36.dp),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                contentColor = MaterialTheme.colorScheme.primary,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f),
+                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
         ) {
             Icon(
-                imageVector = Icons.Default.AddCircleOutline,
+                imageVector = Icons.Default.Add,
                 contentDescription = localizedText("添加"),
-                tint = if (canAdd) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
     }
+}
+
+@Composable
+private fun BottomBarPreviewCard(
+    destinations: List<BottomBarDestination>,
+    modifier: Modifier = Modifier
+) {
+    var previewSelectedPage by remember(destinations) { mutableIntStateOf(0) }
+    val safeSelectedPage = previewSelectedPage.coerceIn(0, (destinations.size - 1).coerceAtLeast(0))
+
+    SettingsSurfaceGroup(
+        modifier = modifier,
+        content = listOf {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header row of preview
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Visibility,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = localizedText("当前底栏预览"),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                    ) {
+                        Text(
+                            text = "${destinations.size} " + localizedText("项"),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Simulated container preview stage
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                        .padding(vertical = 16.dp, horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val tabsCount = destinations.size.coerceIn(
+                            BottomBarDestination.MIN_COUNT,
+                            BottomBarDestination.MAX_COUNT
+                        )
+                        val targetWidth = when (tabsCount) {
+                            2 -> 204.dp
+                            3 -> 276.dp
+                            4 -> 340.dp
+                            else -> 204.dp
+                        }
+                        val scale = if (maxWidth < targetWidth + 16.dp) {
+                            ((maxWidth.value - 16f) / targetWidth.value).coerceAtLeast(0.7f)
+                        } else {
+                            1f
+                        }.coerceAtMost(1f)
+
+                        Box(
+                            modifier = Modifier
+                                .height(64.dp)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            FloatingNavigationBar(
+                                selectedPage = safeSelectedPage,
+                                onPageSelected = { previewSelectedPage = it },
+                                items = destinations,
+                                isGlassEnabled = true
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = localizedText("可点击上方底栏图标测试切换效果与高光"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    )
 }

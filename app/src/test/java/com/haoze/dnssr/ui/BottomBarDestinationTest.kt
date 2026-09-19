@@ -8,11 +8,12 @@ import org.junit.Test
 class BottomBarDestinationTest {
 
     @Test
-    fun `default destinations are HOME and FEATURE_HUB`() {
+    fun `default destinations are HOME, FEATURE_HUB and LOG_DASHBOARD`() {
         val defaults = BottomBarDestination.DEFAULT_DESTINATIONS
-        assertEquals(2, defaults.size)
+        assertEquals(3, defaults.size)
         assertEquals(BottomBarDestination.HOME, defaults[0])
         assertEquals(BottomBarDestination.FEATURE_HUB, defaults[1])
+        assertEquals(BottomBarDestination.LOG_DASHBOARD, defaults[2])
     }
 
     @Test

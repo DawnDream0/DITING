@@ -6,6 +6,11 @@ package com.haoze.dnssr.ui.localization
 internal fun translateSettingsAndAppearanceExact(text: String): String? = when (text) {
     "底栏自定义" -> "Bottom bar customization"
     "自定义底栏按钮与显示顺序（2～4个）" -> "Customize bottom bar buttons and display order (2–4)"
+    "底栏效果预览" -> "Bottom bar preview"
+    "当前底栏预览" -> "Current bottom bar preview"
+    "可点击上方底栏图标测试切换效果与高光" -> "Tap bottom bar icons to test transitions and specular highlights"
+    "项" -> "items"
+    "所有页面均已添加到底栏" -> "All pages have been added to the bottom bar"
     "已选底栏按钮" -> "Selected bottom bar buttons"
     "可添加的页面" -> "Available pages to add"
     "底栏按钮数量限制在 2～4 个。您可在此自由添加、移除或调整底栏按钮的显示顺序。" -> "Bottom bar buttons are limited to 2–4. You can add, remove, or reorder buttons here."

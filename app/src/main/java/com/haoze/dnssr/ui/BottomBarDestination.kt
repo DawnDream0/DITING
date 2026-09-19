@@ -67,7 +67,7 @@ enum class BottomBarDestination(
         const val MIN_COUNT = 2
         const val MAX_COUNT = 4
 
-        val DEFAULT_DESTINATIONS: List<BottomBarDestination> = listOf(HOME, FEATURE_HUB)
+        val DEFAULT_DESTINATIONS: List<BottomBarDestination> = listOf(HOME, FEATURE_HUB, LOG_DASHBOARD)
 
         fun fromId(id: String): BottomBarDestination? = entries.firstOrNull { it.id == id }
 
