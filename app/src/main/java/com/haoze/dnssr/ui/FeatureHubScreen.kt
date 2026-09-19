@@ -3,7 +3,6 @@ package com.haoze.dnssr.ui
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -286,7 +285,7 @@ private fun FeatureHubCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.94f else 1.0f,
+        targetValue = if (isPressed) 0.90f else 1.0f,
         animationSpec = if (isPressed) {
             spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
@@ -294,7 +293,7 @@ private fun FeatureHubCard(
             )
         } else {
             spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
+                dampingRatio = 0.38f,
                 stiffness = Spring.StiffnessMediumLow
             )
         },
@@ -305,14 +304,14 @@ private fun FeatureHubCard(
     val clickModifier = if (hasLongClick) {
         Modifier.combinedClickable(
             interactionSource = interactionSource,
-            indication = LocalIndication.current,
+            indication = null,
             onClick = item.onClick,
             onLongClick = item.onLongClick
         )
     } else {
         Modifier.clickable(
             interactionSource = interactionSource,
-            indication = LocalIndication.current,
+            indication = null,
             onClick = item.onClick
         )
     }
@@ -322,6 +321,7 @@ private fun FeatureHubCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .graphicsLayer {
                 scaleX = scale
@@ -352,6 +352,8 @@ private fun FeatureHubCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .combinedClickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
                                 onClick = {},
                                 onLongClick = item.onLongClick
                             )
