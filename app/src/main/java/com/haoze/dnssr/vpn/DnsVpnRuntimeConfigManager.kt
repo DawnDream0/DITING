@@ -181,7 +181,7 @@ class DnsVpnRuntimeConfigManager(
         }
     }
 
-    fun refreshAppAllowlist() {
+        fun refreshAppAllowlist() {
         if (tunnelManager.vpnInterface == null) {
             Log.d(TAG, "Skip application allowlist refresh because VPN is not running")
             return
@@ -189,15 +189,76 @@ class DnsVpnRuntimeConfigManager(
 
         scope.launch {
             refreshMutex.withLock {
-                val rules = if (AppRulesSettingsStore.isAppAllowlistEnabled(context)) {
-                    AppRulesSettingsStore.getAppAllowlistRuleMap(context)
-                } else {
-                    emptyMap()
-                }
-                tunnelManager.goInspectionTunnel?.syncAppAllowlist(rules)
+                buildAndSyncAppAllowlist()
             }
         }
     }
+
+    /**
+     * Build the app-allowlist rule map and push it to the Go engine.
+     *
+     * An app enters network-layer default-deny mode (all connections blocked
+     * except listed domains) when the user toggles "默认拦截全部外联" for that
+     * app in the app-rule screen, which creates a `||*$app=pkg` block rule.
+     *
+     * For each such app, the allowed domains are gathered from:
+     *  1. The DNS allowlist (AllowRuleDao) — all enabled per-app allow rules,
+     *     including `@@||domain^$app=pkg` and subscription-imported rules.
+     *  2. The legacy "专属放行域名" manual list (SharedPreferences), if any.
+     */
+    private suspend fun buildAndSyncAppAllowlist() {
+        val tunnel = tunnelManager.goInspectionTunnel ?: return
+        if (!AppRulesSettingsStore.isAppAllowlistEnabled(context)) {
+            tunnel.syncAppAllowlist(emptyMap())
+            return
+        }
+
+        val merged = mutableMapOf<String, Set<String>>()
+        val db = com.haoze.dnssr.data.AppDatabase.getInstance(context)
+
+        // Step 1: find apps that have the "block everything" rule (||*$app=pkg)
+        runCatching {
+            val blockDao = db.blockRuleDao()
+            val blockScopes = blockDao.appScopes()
+            for (appScope in blockScopes) {
+                val pkgs = appScope.split('|')
+                    .map { it.trim().removePrefix("~") }
+                    .filter { it.isNotEmpty() }
+                if (pkgs.isEmpty()) continue
+                val blockEntities = blockDao.allByAppScope(appScope)
+                val hasBlockAll = blockEntities.any { it.enabled && it.pattern == "||*" }
+                if (!hasBlockAll) continue
+                for (pkg in pkgs) {
+                    merged[pkg] = emptySet()
+                }
+            }
+        }.onFailure { Log.w(TAG, "Failed to scan block rules for allowlist apps", it) }
+
+        // Step 2: collect allowed domains for each app in default-deny mode
+        if (merged.isNotEmpty()) {
+            runCatching {
+                val allowDao = db.allowRuleDao()
+                // Merge legacy manual domains
+                val manual = AppRulesSettingsStore.getAppAllowlistRuleMap(context)
+                for ((pkg, domains) in manual) {
+                    if (pkg in merged) {
+                        merged[pkg] = merged[pkg]!! + domains
+                    }
+                }
+                // Collect DNS allowlist rules (including subscription rules)
+                for (pkg in merged.keys.toList()) {
+                    val allowEntities = allowDao.allByAppScope(pkg)
+                    val allowed = allowEntities.filter { it.enabled }.map { it.pattern }.toSet()
+                    if (allowed.isNotEmpty()) {
+                        merged[pkg] = merged[pkg]!! + allowed
+                    }
+                }
+            }.onFailure { Log.w(TAG, "Failed to collect allow domains for allowlist apps", it) }
+        }
+
+        tunnel.syncAppAllowlist(merged)
+    }
+
 
     companion object {
         private const val TAG = "DnsVpnRuntimeConfigManager"
