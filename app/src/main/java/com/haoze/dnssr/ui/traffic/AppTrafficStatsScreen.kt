@@ -47,8 +47,10 @@ import com.haoze.dnssr.ui.localizedText
 
 @Composable
 fun AppTrafficStatsScreen(
-    onBack: () -> Unit,
-    viewModel: AppTrafficStatsViewModel = viewModel()
+    onBack: () -> Unit = {},
+    viewModel: AppTrafficStatsViewModel = viewModel(),
+    showBackIcon: Boolean = true,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
@@ -74,6 +76,7 @@ fun AppTrafficStatsScreen(
     SettingsScaffold(
         title = localizedText("应用流量统计"),
         onBack = onBack,
+        showBackIcon = showBackIcon,
         actions = {
             IconButton(onClick = { showClearConfirmDialog = true }) {
                 Icon(
@@ -93,6 +96,7 @@ fun AppTrafficStatsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .padding(bottom = contentBottomPadding)
                 .background(colors.background)
         ) {
             SecondaryScrollableTabRow(

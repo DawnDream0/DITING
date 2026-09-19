@@ -66,10 +66,12 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NetworkToolsScreen(
-    onBack: () -> Unit,
+    onBack: () -> Unit = {},
     title: String = "网络诊断",
     viewModel: NetworkToolsViewModel = viewModel(),
-    speedTestViewModel: RaceModeSettingsViewModel = viewModel()
+    speedTestViewModel: RaceModeSettingsViewModel = viewModel(),
+    showBackIcon: Boolean = true,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
     val toolMode by viewModel.toolMode.collectAsStateWithLifecycle()
@@ -89,12 +91,14 @@ fun NetworkToolsScreen(
 
     SettingsScaffold(
         title = title,
-        onBack = onBack
+        onBack = onBack,
+        showBackIcon = showBackIcon
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .padding(bottom = contentBottomPadding)
         ) {
             NetworkOverviewCard(
                 snapshot = networkSnapshot,

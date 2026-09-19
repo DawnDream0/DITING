@@ -184,6 +184,7 @@ class SettingsRouteActivity : AppLocalizedActivity() {
         if (data.getBooleanExtra(EXTRA_RUNTIME_DNS_CHANGED, false)) recordRuntimeDnsChanged()
         if (data.getBooleanExtra(EXTRA_THEME_CHANGED, false)) recordThemeChanged()
         if (data.getBooleanExtra(EXTRA_BACKGROUND_CHANGED, false)) recordBackgroundChanged()
+        if (data.getBooleanExtra(EXTRA_BOTTOM_BAR_CHANGED, false)) recordBottomBarChanged()
         if (data.hasExtra(EXTRA_HIDE_FROM_RECENTS)) {
             recordHideFromRecentsChanged(data.getBooleanExtra(EXTRA_HIDE_FROM_RECENTS, false))
         }
@@ -205,6 +206,11 @@ class SettingsRouteActivity : AppLocalizedActivity() {
 
     private fun recordBackgroundChanged() {
         resultData.putExtra(EXTRA_BACKGROUND_CHANGED, true)
+        setResult(RESULT_OK, resultData)
+    }
+
+    private fun recordBottomBarChanged() {
+        resultData.putExtra(EXTRA_BOTTOM_BAR_CHANGED, true)
         setResult(RESULT_OK, resultData)
     }
 
@@ -331,7 +337,23 @@ class SettingsRouteActivity : AppLocalizedActivity() {
             )
             Routes.ABOUT -> AboutScreen(onBack, "应用信息")
             Routes.APP_UPDATE -> AppUpdateScreen(appUpdateState, onBack, onCheckForAppUpdate, onDownloadAppUpdate, onJoinQqGroup, startupUpdateCheckDisabled, onStartupUpdateCheckDisabledChange)
-            Routes.APPEARANCE_SETTINGS -> SettingsGuideHost(SettingsGuides.APPEARANCE) { AppearanceSettingsScreen(onBack, "外观设置", { onNavigate(Routes.DAY_NIGHT_MODE) }, { onNavigate(Routes.THEME_COLOR_SETTINGS) }, { onNavigate(Routes.HOME_COMPONENT_OPACITY) }, { onNavigate(Routes.HOME_SENTENCE_SETTINGS) }, { onNavigate(Routes.NOTIFICATION_SETTINGS) }, { onNavigate(Routes.CUSTOM_BACKGROUND_SETTINGS) }) }
+            Routes.APPEARANCE_SETTINGS -> SettingsGuideHost(SettingsGuides.APPEARANCE) {
+                AppearanceSettingsScreen(
+                    onBack = onBack,
+                    title = "外观设置",
+                    onNavigateToDayNightMode = { onNavigate(Routes.DAY_NIGHT_MODE) },
+                    onNavigateToThemeColorSettings = { onNavigate(Routes.THEME_COLOR_SETTINGS) },
+                    onNavigateToHomeComponentOpacity = { onNavigate(Routes.HOME_COMPONENT_OPACITY) },
+                    onNavigateToHomeSentence = { onNavigate(Routes.HOME_SENTENCE_SETTINGS) },
+                    onNavigateToNotificationSettings = { onNavigate(Routes.NOTIFICATION_SETTINGS) },
+                    onNavigateToCustomBackground = { onNavigate(Routes.CUSTOM_BACKGROUND_SETTINGS) },
+                    onNavigateToBottomBarCustomization = { onNavigate(Routes.BOTTOM_BAR_CUSTOMIZATION) }
+                )
+            }
+            Routes.BOTTOM_BAR_CUSTOMIZATION -> BottomBarCustomizationScreen(
+                onBack = onBack,
+                onBottomBarChanged = ::recordBottomBarChanged
+            )
             Routes.DAY_NIGHT_MODE -> DayNightModeScreen(onBack, "日夜模式", onThemeModeChanged)
             Routes.THEME_COLOR_SETTINGS -> ThemeColorSettingsScreen(onBack, "主题色配置", onThemeColorStyleChanged)
             Routes.HOME_COMPONENT_OPACITY -> HomeComponentOpacityScreen(onBack, "首页透明度")
@@ -359,6 +381,7 @@ class SettingsRouteActivity : AppLocalizedActivity() {
         const val EXTRA_HIDE_FROM_RECENTS = "settings_hide_from_recents"
         const val EXTRA_THEME_CHANGED = "settings_theme_changed"
         const val EXTRA_BACKGROUND_CHANGED = "settings_background_changed"
+        const val EXTRA_BOTTOM_BAR_CHANGED = "settings_bottom_bar_changed"
         const val EXTRA_OUTBOUND_PROXY_APP_SELECTED = "settings_outbound_proxy_app_selected"
         const val EXTRA_OUTBOUND_PROXY_APP_PACKAGE = "settings_outbound_proxy_app_package"
 

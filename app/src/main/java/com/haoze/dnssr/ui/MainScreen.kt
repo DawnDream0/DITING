@@ -36,7 +36,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.haoze.dnssr.ui.settings.AppearanceSettingsStore
 import com.haoze.dnssr.ui.settings.SystemSettingsStore
+import com.haoze.dnssr.ui.traffic.AppTrafficStatsScreen
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
@@ -91,6 +93,10 @@ fun MainScreen(
     onNavigateToOutboundProxy: () -> Unit = {},
     onNavigateToDataCleanup: () -> Unit = {},
     onNavigateToAgentApiSettings: () -> Unit = {},
+    onNavigateToLogRoute: (String) -> Unit = { onNavigateToLogs() },
+    onNavigateToSettingsRoute: (String) -> Unit = { onNavigateToSettings() },
+    bottomBarRefreshRequested: Boolean = false,
+    onBottomBarRefreshConsumed: () -> Unit = {},
     viewModel: MainViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -100,15 +106,32 @@ fun MainScreen(
     var showDataResetNotice by remember {
         mutableStateOf(SystemSettingsStore.isDataResetNoticePending(context))
     }
-    val pagerState = rememberPagerState(initialPage = 0) { 2 }
+    var bottomBarItems by remember {
+        mutableStateOf(AppearanceSettingsStore.getBottomBarDestinations(context))
+    }
+    val pagerState = rememberPagerState(initialPage = 0) { bottomBarItems.size }
     val coroutineScope = rememberCoroutineScope()
     val pageAlpha = remember { Animatable(1f) }
     var pageSwitchJob by remember { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(bottomBarRefreshRequested) {
+        if (bottomBarRefreshRequested) {
+            bottomBarItems = AppearanceSettingsStore.getBottomBarDestinations(context)
+            onBottomBarRefreshConsumed()
+        }
+    }
+
+    LaunchedEffect(bottomBarItems.size) {
+        if (pagerState.currentPage >= bottomBarItems.size) {
+            pagerState.scrollToPage(0)
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 showDataResetNotice = SystemSettingsStore.isDataResetNoticePending(context)
+                bottomBarItems = AppearanceSettingsStore.getBottomBarDestinations(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -122,7 +145,7 @@ fun MainScreen(
         }
     }
 
-    BackHandler(enabled = pagerState.currentPage == 1) {
+    BackHandler(enabled = pagerState.currentPage != 0) {
         coroutineScope.launch {
             pagerState.animateScrollToPage(
                 page = 0,
@@ -131,114 +154,180 @@ fun MainScreen(
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = pageAlpha.value },
+            beyondViewportPageCount = 1
+        ) { page ->
+            when (bottomBarItems.getOrNull(page)) {
+                BottomBarDestination.HOME -> {
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize(),
                         containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent
-                    ),
-                    title = {
-                        Text(if (pagerState.currentPage == 0) localizedText("谛听") else localizedText("功能中心"))
-                    }
-                )
-            }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = innerPadding.calculateTopPadding())
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = pageAlpha.value },
-                    beyondViewportPageCount = 1
-                ) { page ->
-                    if (page == 0) {
-                        MainContent(
-                            uiState = uiState,
-                            onToggle = { onToggle(uiState.isRunning) },
-                            onNavigateToProviderManagement = onNavigateToProviderManagement,
-                            onNavigateToHomeProviderVisibility = onNavigateToHomeProviderVisibility,
-                            onNavigateToRaceModeSettings = onNavigateToRaceModeSettings,
-                            showDataResetNotice = showDataResetNotice,
-                            onDismissDataResetNotice = {
-                                SystemSettingsStore.dismissDataResetNotice(context)
-                                showDataResetNotice = false
-                            },
-                            viewModel = viewModel
-                        )
-                    } else {
-                        FeatureHubScreen(
-                            onNavigateToProviderManagement = onNavigateToProviderManagement,
-                            onNavigateToBootstrapSettings = onNavigateToBootstrapSettings,
-                            onNavigateToBlockedApps = onNavigateToBlockedApps,
-                            onNavigateToAppAllowlist = onNavigateToAppAllowlist,
-                            onNavigateToExcludedApps = onNavigateToExcludedApps,
-                            onNavigateToAppearanceSettings = onNavigateToAppearanceSettings,
-                            onNavigateToRuleControl = onNavigateToRuleControl,
-                            onNavigateToBlacklist = onNavigateToBlacklist,
-                            onNavigateToWhitelist = onNavigateToWhitelist,
-                            onNavigateToRewriteList = onNavigateToRewriteList,
-                            onNavigateToAppRules = onNavigateToAppRules,
-                            onNavigateToHttpInspection = onNavigateToHttpInspection,
-                            onNavigateToLogs = onNavigateToLogs,
-                            onNavigateToSettings = onNavigateToSettings,
-                            onNavigateToLogRetentionSettings = onNavigateToLogRetentionSettings,
-                            onNavigateToNetworkTools = onNavigateToNetworkTools,
-                            onNavigateToHomeProviderVisibility = onNavigateToHomeProviderVisibilityFromFeatureHub,
-                            onNavigateToAbout = onNavigateToAbout,
-                            onNavigateToSponsor = onNavigateToSponsor,
-                            onNavigateToSponsorList = onNavigateToSponsorList,
-                            onNavigateToCoBuilderList = onNavigateToCoBuilderList,
-                            onNavigateToAppUpdate = onNavigateToAppUpdate,
-                            onNavigateToDataManagement = onNavigateToDataManagement,
-                            onNavigateToTrafficStats = onNavigateToTrafficStats,
-                            onNavigateToOptionalFeatures = onNavigateToOptionalFeatures,
-                            onNavigateToOutboundProxy = onNavigateToOutboundProxy,
-                            onNavigateToRaceModeSettings = onNavigateToRaceModeSettings,
-                            onNavigateToDataCleanup = onNavigateToDataCleanup,
-                            onNavigateToAgentApiSettings = onNavigateToAgentApiSettings
-                        )
+                        topBar = {
+                            TopAppBar(
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = Color.Transparent,
+                                    scrolledContainerColor = Color.Transparent
+                                ),
+                                title = {
+                                    Text(localizedText("谛听"))
+                                }
+                            )
+                        }
+                    ) { innerPadding ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = innerPadding.calculateTopPadding())
+                        ) {
+                            MainContent(
+                                uiState = uiState,
+                                onToggle = { onToggle(uiState.isRunning) },
+                                onNavigateToProviderManagement = onNavigateToProviderManagement,
+                                onNavigateToHomeProviderVisibility = onNavigateToHomeProviderVisibility,
+                                onNavigateToRaceModeSettings = onNavigateToRaceModeSettings,
+                                showDataResetNotice = showDataResetNotice,
+                                onDismissDataResetNotice = {
+                                    SystemSettingsStore.dismissDataResetNotice(context)
+                                    showDataResetNotice = false
+                                },
+                                viewModel = viewModel
+                            )
+                        }
                     }
                 }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(bottom = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    FloatingNavigationBar(
-                        selectedPage = pagerState.currentPage,
-                        onPageSelected = { targetPage ->
-                            if (pagerState.currentPage != targetPage) {
-                                pageSwitchJob?.cancel()
-                                pageSwitchJob = coroutineScope.launch {
-                                    try {
-                                        pageAlpha.animateTo(
-                                            targetValue = 0f,
-                                            animationSpec = tween(durationMillis = 90, easing = LinearEasing)
-                                        )
-                                        pagerState.scrollToPage(targetPage)
-                                        pageAlpha.animateTo(
-                                            targetValue = 1f,
-                                            animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
-                                        )
-                                    } finally {
-                                        pageAlpha.snapTo(1f)
-                                    }
+                BottomBarDestination.FEATURE_HUB -> {
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize(),
+                        containerColor = Color.Transparent,
+                        topBar = {
+                            TopAppBar(
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = Color.Transparent,
+                                    scrolledContainerColor = Color.Transparent
+                                ),
+                                title = {
+                                    Text(localizedText("功能中心"))
                                 }
-                            }
-                        },
-                        pagerProgress = { pagerState.currentPage + pagerState.currentPageOffsetFraction }
+                            )
+                        }
+                    ) { innerPadding ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = innerPadding.calculateTopPadding())
+                        ) {
+                            FeatureHubScreen(
+                                onNavigateToProviderManagement = onNavigateToProviderManagement,
+                                onNavigateToBootstrapSettings = onNavigateToBootstrapSettings,
+                                onNavigateToBlockedApps = onNavigateToBlockedApps,
+                                onNavigateToAppAllowlist = onNavigateToAppAllowlist,
+                                onNavigateToExcludedApps = onNavigateToExcludedApps,
+                                onNavigateToAppearanceSettings = onNavigateToAppearanceSettings,
+                                onNavigateToRuleControl = onNavigateToRuleControl,
+                                onNavigateToBlacklist = onNavigateToBlacklist,
+                                onNavigateToWhitelist = onNavigateToWhitelist,
+                                onNavigateToRewriteList = onNavigateToRewriteList,
+                                onNavigateToAppRules = onNavigateToAppRules,
+                                onNavigateToHttpInspection = onNavigateToHttpInspection,
+                                onNavigateToLogs = onNavigateToLogs,
+                                onNavigateToSettings = onNavigateToSettings,
+                                onNavigateToLogRetentionSettings = onNavigateToLogRetentionSettings,
+                                onNavigateToNetworkTools = onNavigateToNetworkTools,
+                                onNavigateToHomeProviderVisibility = onNavigateToHomeProviderVisibilityFromFeatureHub,
+                                onNavigateToAbout = onNavigateToAbout,
+                                onNavigateToSponsor = onNavigateToSponsor,
+                                onNavigateToSponsorList = onNavigateToSponsorList,
+                                onNavigateToCoBuilderList = onNavigateToCoBuilderList,
+                                onNavigateToAppUpdate = onNavigateToAppUpdate,
+                                onNavigateToDataManagement = onNavigateToDataManagement,
+                                onNavigateToTrafficStats = onNavigateToTrafficStats,
+                                onNavigateToOptionalFeatures = onNavigateToOptionalFeatures,
+                                onNavigateToOutboundProxy = onNavigateToOutboundProxy,
+                                onNavigateToRaceModeSettings = onNavigateToRaceModeSettings,
+                                onNavigateToDataCleanup = onNavigateToDataCleanup,
+                                onNavigateToAgentApiSettings = onNavigateToAgentApiSettings
+                            )
+                        }
+                    }
+                }
+                BottomBarDestination.LOG_DASHBOARD -> {
+                    ModernLogDashboardScreen(
+                        onBack = {},
+                        onNavigateToDnsLogs = { onNavigateToLogRoute(Routes.DNS_LOGS) },
+                        onNavigateToDnsCache = { onNavigateToLogRoute(Routes.DNS_CACHE) },
+                        onNavigateToRaceStats = { onNavigateToLogRoute(Routes.RACE_STATS) },
+                        onNavigateToBootstrapStats = { onNavigateToLogRoute(Routes.BOOTSTRAP_STATS) },
+                        onNavigateToSubscriptionInterceptionStats = { onNavigateToLogRoute(Routes.SUBSCRIPTION_INTERCEPTION_STATS) },
+                        onNavigateToTrafficStats = onNavigateToTrafficStats,
+                        showBackIcon = false,
+                        contentBottomPadding = 108.dp
                     )
                 }
+                BottomBarDestination.APP_TRAFFIC_STATS -> {
+                    AppTrafficStatsScreen(
+                        onBack = {},
+                        showBackIcon = false,
+                        contentBottomPadding = 108.dp
+                    )
+                }
+                BottomBarDestination.NETWORK_TOOLS -> {
+                    NetworkToolsScreen(
+                        onBack = {},
+                        showBackIcon = false,
+                        contentBottomPadding = 108.dp
+                    )
+                }
+                BottomBarDestination.SETTINGS -> {
+                    SettingsScreen(
+                        onBack = {},
+                        onNavigateToRoute = onNavigateToSettingsRoute,
+                        showBackIcon = false,
+                        contentBottomPadding = 108.dp
+                    )
+                }
+                null -> Unit
             }
         }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            FloatingNavigationBar(
+                selectedPage = pagerState.currentPage,
+                onPageSelected = { targetPage ->
+                    if (pagerState.currentPage != targetPage) {
+                        pageSwitchJob?.cancel()
+                        pageSwitchJob = coroutineScope.launch {
+                            try {
+                                pageAlpha.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = tween(durationMillis = 90, easing = LinearEasing)
+                                )
+                                pagerState.scrollToPage(targetPage)
+                                pageAlpha.animateTo(
+                                    targetValue = 1f,
+                                    animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
+                                )
+                            } finally {
+                                pageAlpha.snapTo(1f)
+                            }
+                        }
+                    }
+                },
+                items = bottomBarItems,
+                pagerProgress = { pagerState.currentPage + pagerState.currentPageOffsetFraction }
+            )
+        }
+    }
 }

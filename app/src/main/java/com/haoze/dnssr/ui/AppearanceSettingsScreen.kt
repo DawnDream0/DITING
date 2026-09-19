@@ -23,11 +23,13 @@ fun AppearanceSettingsScreen(
     onNavigateToHomeComponentOpacity: () -> Unit,
     onNavigateToHomeSentence: () -> Unit,
     onNavigateToNotificationSettings: () -> Unit,
-    onNavigateToCustomBackground: () -> Unit
+    onNavigateToCustomBackground: () -> Unit,
+    onNavigateToBottomBarCustomization: () -> Unit
 ) {
     val context = LocalContext.current
     val mode = AppearanceSettingsStore.getAppThemeMode(context)
     val colorStyle = AppearanceSettingsStore.getThemeColorStyle(context)
+    val bottomBarCount = AppearanceSettingsStore.getBottomBarDestinations(context).size
 
     SettingsScaffold(title = localizedText(title), onBack = onBack) { innerPadding ->
         LazyColumn(
@@ -56,6 +58,12 @@ fun AppearanceSettingsScreen(
                             title = localizedText("首页透明度"),
                             subtitle = localizedText("分别调整首页按钮、选择框与文字的透明度"),
                             onClick = onNavigateToHomeComponentOpacity
+                        ),
+                        SettingsNavigationItemData(
+                            title = localizedText("底栏自定义"),
+                            subtitle = localizedText("自定义底栏按钮与显示顺序（2～4个）"),
+                            value = "$bottomBarCount " + localizedText("个按钮"),
+                            onClick = onNavigateToBottomBarCustomization
                         )
                     )
                 )

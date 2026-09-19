@@ -17,15 +17,22 @@ import com.haoze.dnssr.ui.components.SettingsNavigationItemData
 import com.haoze.dnssr.ui.components.SettingsScaffold
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onNavigateToRoute: (String) -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit = {},
+    onNavigateToRoute: (String) -> Unit,
+    showBackIcon: Boolean = true,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+) {
     SettingsScaffold(
         title = stringResource(R.string.other_settings),
-        onBack = onBack
+        onBack = onBack,
+        showBackIcon = showBackIcon
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .padding(bottom = contentBottomPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SettingsSection.entries.sortedBy { it.order }.forEach { section ->

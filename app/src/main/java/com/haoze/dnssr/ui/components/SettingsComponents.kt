@@ -57,6 +57,7 @@ fun SettingsScaffold(
     titleTrailing: @Composable RowScope.() -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
     belowTopBar: @Composable ColumnScope.() -> Unit = {},
+    showBackIcon: Boolean = true,
     content: @Composable (PaddingValues) -> Unit
 ) {
     SettingsScaffold(
@@ -71,6 +72,7 @@ fun SettingsScaffold(
         onBack = onBack,
         actions = actions,
         belowTopBar = belowTopBar,
+        showBackIcon = showBackIcon,
         content = content
     )
 }
@@ -82,6 +84,7 @@ fun SettingsScaffold(
     onBack: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
     belowTopBar: @Composable ColumnScope.() -> Unit = {},
+    showBackIcon: Boolean = true,
     content: @Composable (PaddingValues) -> Unit
 ) {
     Scaffold(
@@ -94,11 +97,13 @@ fun SettingsScaffold(
                     ),
                     title = titleContent,
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = localizedText("返回")
-                            )
+                        if (showBackIcon) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = localizedText("返回")
+                                )
+                            }
                         }
                     },
                     actions = actions

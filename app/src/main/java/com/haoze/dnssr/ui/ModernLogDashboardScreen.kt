@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -37,14 +38,16 @@ import com.haoze.dnssr.ui.dashboard.formatClockTime
 
 @Composable
 fun ModernLogDashboardScreen(
-    onBack: () -> Unit,
+    onBack: () -> Unit = {},
     onNavigateToDnsLogs: () -> Unit,
     onNavigateToDnsCache: () -> Unit,
     onNavigateToRaceStats: () -> Unit,
     onNavigateToBootstrapStats: () -> Unit,
     onNavigateToSubscriptionInterceptionStats: () -> Unit,
     onNavigateToTrafficStats: (() -> Unit)? = null,
-    viewModel: ModernLogDashboardViewModel = viewModel()
+    viewModel: ModernLogDashboardViewModel = viewModel(),
+    showBackIcon: Boolean = true,
+    contentBottomPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = MaterialTheme.colorScheme
@@ -92,6 +95,7 @@ fun ModernLogDashboardScreen(
             }
         },
         onBack = onBack,
+        showBackIcon = showBackIcon,
         actions = {
             IconButton(onClick = { showAgentAnalysis = true }) {
                 Icon(
@@ -112,6 +116,7 @@ fun ModernLogDashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .padding(bottom = contentBottomPadding)
                 .background(colors.background)
         ) {
             if (uiState.loading && !uiState.hasData) {

@@ -115,11 +115,15 @@ class MainActivity : AppLocalizedActivity() {
             if (data.getBooleanExtra(SettingsRouteActivity.EXTRA_BACKGROUND_CHANGED, false)) {
                 backgroundRefreshRequested = true
             }
+            if (data.getBooleanExtra(SettingsRouteActivity.EXTRA_BOTTOM_BAR_CHANGED, false)) {
+                bottomBarRefreshRequested = true
+            }
         }
     }
 
     private var mainThemeRefreshRequested by mutableStateOf(false)
     private var backgroundRefreshRequested by mutableStateOf(false)
+    private var bottomBarRefreshRequested by mutableStateOf(false)
 
     private fun launchSettings(route: String) {
         if (settingsLaunchInProgress) return
@@ -129,6 +133,10 @@ class MainActivity : AppLocalizedActivity() {
 
     private fun launchLogs() {
         startActivity(LogRouteActivity.createIntent(this, Routes.LOG_DASHBOARD))
+    }
+
+    private fun launchLogRoute(route: String) {
+        startActivity(LogRouteActivity.createIntent(this, route))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -200,7 +208,11 @@ class MainActivity : AppLocalizedActivity() {
                                 onNavigateToOptionalFeatures = { launchSettings(Routes.OPTIONAL_FEATURES) },
                                 onNavigateToOutboundProxy = { launchSettings(Routes.OUTBOUND_PROXY_SETTINGS) },
                                 onNavigateToDataCleanup = { launchSettings(Routes.DATA_CLEANUP) },
-                                onNavigateToAgentApiSettings = { launchSettings(Routes.AGENT_API_SETTINGS) }
+                                onNavigateToAgentApiSettings = { launchSettings(Routes.AGENT_API_SETTINGS) },
+                                onNavigateToLogRoute = ::launchLogRoute,
+                                onNavigateToSettingsRoute = ::launchSettings,
+                                bottomBarRefreshRequested = bottomBarRefreshRequested,
+                                onBottomBarRefreshConsumed = { bottomBarRefreshRequested = false }
                             )
                         } else {
                             InitialAgreementDialog(

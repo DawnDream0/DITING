@@ -111,6 +111,7 @@ private const val PAGER_CATCH_UP_TIMEOUT_NANO = 800_000_000L
 fun FloatingNavigationBar(
     selectedPage: Int,
     onPageSelected: (Int) -> Unit,
+    items: List<BottomBarDestination>,
     modifier: Modifier = Modifier,
     pagerProgress: (() -> Float)? = null,
     isGlassEnabled: Boolean = true,
@@ -129,9 +130,14 @@ fun FloatingNavigationBar(
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val animationScope = rememberCoroutineScope()
-    val tabsCount = 2
+    val tabsCount = items.size.coerceIn(BottomBarDestination.MIN_COUNT, BottomBarDestination.MAX_COUNT)
 
-    val navSectionWidthDp = 204.dp
+    val navSectionWidthDp = when (tabsCount) {
+        2 -> 204.dp
+        3 -> 276.dp
+        4 -> 340.dp
+        else -> 204.dp
+    }
     val barHeightDp = 64.dp
     val totalWidthDp = navSectionWidthDp
 
@@ -160,7 +166,7 @@ fun FloatingNavigationBar(
     val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr) {
         DampedDragAnimation(
             animationScope = animationScope,
-            initialValue = selectedPage.toFloat(),
+            initialValue = selectedPage.coerceIn(0, tabsCount - 1).toFloat(),
             valueRange = 0f..(tabsCount - 1).toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
@@ -266,7 +272,7 @@ fun FloatingNavigationBar(
                     val contentWidthPx = navWidthPx - with(density) { 8.dp.toPx() }
                     tabWidthPx = (contentWidthPx / tabsCount).coerceAtLeast(0f)
                 }
-                .pointerInput(tabWidthPx, navWidthPx, isLtr) {
+                .pointerInput(tabWidthPx, navWidthPx, isLtr, tabsCount) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         isUserDragging = true
@@ -315,15 +321,15 @@ fun FloatingNavigationBar(
                                 val upX = change.position.x
                                 val targetIndex = if (!hasMoved) {
                                     // Tap gesture: pick tab by touch position
-                                    if (isLtr) {
-                                        if (upX < navWidthPx / 2f) 0 else 1
-                                    } else {
-                                        if (upX < navWidthPx / 2f) 1 else 0
-                                    }.fastCoerceIn(0, tabsCount - 1)
+                                    val contentStartX = with(density) { 4.dp.toPx() }
+                                    val contentWidthPx = (navWidthPx - with(density) { 8.dp.toPx() }).coerceAtLeast(0f)
+                                    val relativeX = (upX - contentStartX).coerceIn(0f, contentWidthPx.coerceAtLeast(1f))
+                                    val tappedIndex = if (tabWidthPx > 0f) (relativeX / tabWidthPx).toInt() else 0
+                                    if (isLtr) tappedIndex else (tabsCount - 1 - tappedIndex)
                                 } else {
                                     // Drag gesture: settle to closest tab
-                                    dampedDragAnimation.targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
-                                }
+                                    dampedDragAnimation.targetValue.fastRoundToInt()
+                                }.fastCoerceIn(0, tabsCount - 1)
 
                                 dampedDragAnimation.animateToValue(targetIndex.toFloat())
                                 if (pagerProgress != null) {
@@ -434,32 +440,41 @@ fun FloatingNavigationBar(
                     .padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                FloatingBottomBarTab(
-                    index = 0,
-                    isSelected = selectedPage == 0,
-                    weight = { (1f - dampedDragAnimation.value).fastCoerceIn(0f, 1f) },
-                    pressProgress = { dampedDragAnimation.pressProgress },
-                    icon = Icons.Default.Home,
-                    label = localizedText("首页"),
-                    accentColor = if (isGlassEnabled) MaterialTheme.colorScheme.onPrimaryContainer else accentColor,
-                    contentColor = tabContentColor,
-                    onSelect = { onPageSelected(0) }
-                )
-                FloatingBottomBarTab(
-                    index = 1,
-                    isSelected = selectedPage == 1,
-                    weight = { dampedDragAnimation.value.fastCoerceIn(0f, 1f) },
-                    pressProgress = { dampedDragAnimation.pressProgress },
-                    icon = Icons.Default.Apps,
-                    label = localizedText("功能中心"),
-                    accentColor = if (isGlassEnabled) MaterialTheme.colorScheme.onPrimaryContainer else accentColor,
-                    contentColor = tabContentColor,
-                    onSelect = { onPageSelected(1) }
-                )
+                items.forEachIndexed { index, destination ->
+                    FloatingBottomBarTab(
+                        index = index,
+                        isSelected = selectedPage == index,
+                        weight = { (1f - abs(dampedDragAnimation.value - index)).fastCoerceIn(0f, 1f) },
+                        pressProgress = { dampedDragAnimation.pressProgress },
+                        icon = destination.icon,
+                        label = localizedText(destination.tabLabel),
+                        accentColor = if (isGlassEnabled) MaterialTheme.colorScheme.onPrimaryContainer else accentColor,
+                        contentColor = tabContentColor,
+                        onSelect = { onPageSelected(index) }
+                    )
+                }
             }
         }
 
     }
+}
+
+@Composable
+fun FloatingNavigationBar(
+    selectedPage: Int,
+    onPageSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    pagerProgress: (() -> Float)? = null,
+    isGlassEnabled: Boolean = true,
+) {
+    FloatingNavigationBar(
+        selectedPage = selectedPage,
+        onPageSelected = onPageSelected,
+        items = BottomBarDestination.DEFAULT_DESTINATIONS,
+        modifier = modifier,
+        pagerProgress = pagerProgress,
+        isGlassEnabled = isGlassEnabled
+    )
 }
 
 @Composable

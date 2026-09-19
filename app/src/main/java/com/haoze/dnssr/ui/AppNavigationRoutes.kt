@@ -59,6 +59,7 @@ object Routes {
     const val HOME_SENTENCE_SETTINGS = "home_sentence_settings"
     const val NOTIFICATION_SETTINGS = "notification_settings"
     const val CUSTOM_BACKGROUND_SETTINGS = "custom_background_settings"
+    const val BOTTOM_BAR_CUSTOMIZATION = "bottom_bar_customization"
     const val HTTP_INSPECTION_SETTINGS = "http_inspection_settings"
     const val HTTP_INSPECTION_APPS = "http_inspection_apps"
     const val CA_CERTIFICATE_SETTINGS = "ca_certificate_settings"

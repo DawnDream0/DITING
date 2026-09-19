@@ -2,6 +2,7 @@ package com.haoze.dnssr.ui.settings
 
 import android.content.Context
 import com.haoze.dnssr.ui.AppThemeMode
+import com.haoze.dnssr.ui.BottomBarDestination
 import com.haoze.dnssr.ui.theme.ThemeColorStyle
 import org.json.JSONArray
 
@@ -10,6 +11,7 @@ object AppearanceSettingsStore {
 
     private const val KEY_APP_THEME_MODE = "app_theme_mode"
     private const val KEY_THEME_COLOR_STYLE = "theme_color_style"
+    private const val KEY_BOTTOM_BAR_DESTINATIONS = "bottom_bar_destinations"
     private const val KEY_HOME_COMPONENT_OPACITY = "home_component_opacity"
     private const val KEY_HOME_POWER_BUTTON_OPACITY = "home_power_button_opacity"
     private const val KEY_HOME_PROVIDER_SELECTOR_OPACITY = "home_provider_selector_opacity"
@@ -177,6 +179,23 @@ object AppearanceSettingsStore {
             .edit()
             .putString(KEY_CUSTOM_BACKGROUND_URIS, JSONArray(uris.distinct()).toString())
             .apply()
+    }
+
+    fun getBottomBarDestinations(context: Context): List<BottomBarDestination> {
+        val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_BOTTOM_BAR_DESTINATIONS, null)
+        return BottomBarDestination.parseJsonList(json)
+    }
+
+    fun setBottomBarDestinations(context: Context, destinations: List<BottomBarDestination>) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_BOTTOM_BAR_DESTINATIONS, BottomBarDestination.toJsonList(destinations))
+            .apply()
+    }
+
+    fun resetBottomBarDestinations(context: Context) {
+        setBottomBarDestinations(context, BottomBarDestination.DEFAULT_DESTINATIONS)
     }
 
 }
