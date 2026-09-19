@@ -43,10 +43,9 @@ jobs:
       - name: Build tunnel.aar with gomobile
         run: |
           cd tunnel
-          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
           export PATH="$HOME/go/bin:$PATH"
-          gomobile init
-          gomobile bind -target=android/arm64 -androidapi 29 \
+          go run github.com/sagernet/gomobile/cmd/gomobile init
+          go run github.com/sagernet/gomobile/cmd/gomobile bind -target=android/arm64 -androidapi 29 \
             -o ../app/libs/tunnel.aar \
             github.com/nqmgaming/blockads-tunnel/tunnel
           ls -lh ../app/libs/tunnel.aar
