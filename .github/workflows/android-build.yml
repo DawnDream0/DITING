@@ -1,0 +1,44 @@
+name: Android Build
+
+on:
+  push:
+    branches:
+      - main
+      - list
+      - new1
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        # The project pins toolchainVersion=25 and disables toolchain
+        # auto-download (org.gradle.java.installations.auto-download=false),
+        # so the runner must provide a matching JDK.
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x Android/gradlew
+
+      - name: Build debug APK
+        working-directory: Android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DITING-debug-apk
+          path: Android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
