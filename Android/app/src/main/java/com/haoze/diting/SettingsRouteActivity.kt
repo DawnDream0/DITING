@@ -29,7 +29,6 @@ import com.haoze.diting.notification.VpnMonitorManager
 import com.haoze.diting.ui.*
 import com.haoze.diting.ui.batch.BatchAddRulesScreen
 import com.haoze.diting.ui.batch.BatchRuleTarget
-import com.haoze.diting.ui.mode.disableWindowTransitions
 import com.haoze.diting.normal.ui.AppTrafficStatsScreen
 import com.haoze.diting.ui.theme.ThemeColorStyle
 import com.haoze.diting.update.AppUpdateHost
