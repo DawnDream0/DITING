@@ -12,16 +12,16 @@ on:
 jobs:
   build:
     name: Build APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 25
         # The project pins toolchainVersion=25 and disables toolchain
         # auto-download (org.gradle.java.installations.auto-download=false),
         # so the runner must provide a matching JDK.
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
