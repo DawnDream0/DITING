@@ -70,7 +70,7 @@ internal data class AboutCapability(
     val description: String
 )
 
-internal val aboutCapabilities = listOf(
+internal fun getAboutCapabilities(): List<AboutCapability> = listOf(
     AboutCapability("加密上游", "支持 DNS、DoH 与 DoT，并可管理自定义服务商。"),
     AboutCapability("规则与缓存", "以缓存、屏蔽规则、白名单和订阅规则减少重复请求与干扰。"),
     AboutCapability("可观测性", "通过请求日志、竞速统计、服务商健康和 Bootstrap 数据追踪状态。"),
@@ -81,15 +81,11 @@ internal val aboutCapabilities = listOf(
     AboutCapability("HTTPS 流量检查", "按应用检查 HTTP(S) 请求并应用域名和 URL 规则，需安装 HTTPS 检查根证书。")
 )
 
-internal val aboutBoundaries = listOf(
+internal fun getAboutBoundaries(): List<Pair<String, String>> = listOf(
     "默认仅处理 DNS" to "默认通过 Android VpnService 建立仅处理 DNS 的本地通道；启用 HTTPS 流量检查或禁止联网后，Go 隧道使用 Go 用户态网络栈接管 TCP、UDP、DNS 和 HTTP(S) 流量。",
     "实际解析表现" to "解析速度、稳定性和可用性取决于网络环境、所选上游和本机规则。",
     "隐私与本地存储" to "缓存、日志、规则与配置保存在设备本机。上游仍会收到必要查询；仅 DoH、DoT 加密到上游的 DNS 传输。"
 )
-
-internal fun getAboutCapabilities(): List<AboutCapability> = aboutCapabilities
-
-internal fun getAboutBoundaries(): List<Pair<String, String>> = aboutBoundaries
 
 @Composable
 fun AboutScreen(
