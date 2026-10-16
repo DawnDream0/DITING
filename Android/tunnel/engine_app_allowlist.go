@@ -137,6 +137,18 @@ func (e *Engine) appAllowlistDomainAllowed(uid int, domain string) bool {
 	return domainMatches(allowedDomains, wildcards, domain)
 }
 
+// appAllowlistSelected reports whether the UID is under network-layer
+// isolation (its allowlist was pushed via SetAppAllowlist). Such UIDs have
+// an explicit allowlist contract: domains matching the allowlist are
+// authorized; everything else is rejected at the network layer.
+func (e *Engine) appAllowlistSelected(uid int) bool {
+	e.appAllowlist.mu.RLock()
+	defer e.appAllowlist.mu.RUnlock()
+	_, selected := e.appAllowlist.domains[uid]
+	_, hasWc := e.appAllowlist.wildcards[uid]
+	return selected || hasWc
+}
+
 func (e *Engine) appAllowlistConnectionAllowed(uid int, ip net.IP) bool {
 	if ip.IsLoopback() {
 		return true

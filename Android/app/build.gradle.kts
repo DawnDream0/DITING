@@ -74,7 +74,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.haoze.diting"
+        applicationId = "com.haoze.diting.lite"
         minSdk = 24
         targetSdk = 36
         versionCode = appVersionCode

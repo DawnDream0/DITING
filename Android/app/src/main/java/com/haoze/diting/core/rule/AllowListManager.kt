@@ -78,7 +78,12 @@ class AllowListManager(
             sourceEnabled = true
         )
         if (!inserted) return false
-        cache.syncPattern(parsed.pattern, dao.enabledRuleByPattern(parsed.pattern)?.source)
+        // Rebuild the custom cache (customAppBuckets + specialRules) instead of
+        // the incremental syncPattern: per-app allow rules (`@@||d^$app=pkg`)
+        // would otherwise be dropped because enabledRuleByPattern() only matches
+        // global (appScope-less) rules. syncCachedPattern reloads custom rules
+        // first, so app-scoped rules reach the Go rule snapshot correctly.
+        syncCachedPattern(parsed.pattern)
         return true
     }
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">DITING</string>
-    <string name="quick_settings_tile_label">DITING</string>
+    <string name="app_name">DITING Lite</string>
+    <string name="quick_settings_tile_label">DITING Lite</string>
     <string name="language_settings">Language settings</string>
     <string name="language_follow_system">Follow system</string>
     <string name="language_chinese">Chinese</string>

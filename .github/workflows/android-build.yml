@@ -32,6 +32,30 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x Android/gradlew
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.5'
+
+      - name: Install Android NDK
+        # gomobile bind cross-compiles the Go tunnel to a shared library,
+        # which requires the NDK toolchain.
+        run: |
+          sdkmanager --install "ndk;27.2.12479018" --channel=0
+
+      - name: Build tunnel AAR
+        # Regenerates Android/app/libs/tunnel.aar from the Go sources so DNS
+        # allowlist fixes in the tunnel engine actually reach the APK.
+        # The prebuilt AAR committed in the repo is never rebuilt otherwise.
+        working-directory: Android/tunnel
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
+          gomobile init
+          gomobile bind -target=android/arm64 -androidapi=24 -o ../app/libs/tunnel.aar .
+
       - name: Generate CI release signing keystore
         # Release builds require a keystore (see build.gradle.kts signing config,
         # which reads DITING_KEYSTORE_* env vars). Generate a throwaway CI key so

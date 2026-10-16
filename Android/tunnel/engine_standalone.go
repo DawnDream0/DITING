@@ -34,6 +34,14 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 	domain := strings.ToLower(r.Question[0].Name)
 	domain = strings.TrimSuffix(domain, ".")
 	queryType := r.Question[0].Qtype
+	// A UID under network-layer isolation has an explicit allowlist contract:
+	// domains matching its allowlist are authorized (and everything else is
+	// rejected at the network layer). When such a domain passes the allowlist
+	// gate, per-app / subscription block rules must not veto it — otherwise a
+	// failed app-name resolution (e.g. DNS dispatched by netd/system) makes the
+	// whitelisted domain fall through to global subscription blocks and the app
+	// loses all connectivity.
+	allowlistSelected := e.appAllowlistSelected(uid)
 	if !e.appAllowlistDomainAllowed(uid, domain) {
 		e.standaloneBlock(w, r, "app_allowlist", appOverride, startTime)
 		return
@@ -147,6 +155,14 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 	if e.policyEngine != nil && e.policyEngine.isActive() && e.policyEngine.hasRules() {
 		blocked, reason := e.policyEngine.evaluate(domain, appName, queryType)
 		if blocked {
+			// The domain already passed the UID-level allowlist gate above.
+			// A block at this stage is either a per-app block rule or a
+			// global subscription rule; the explicit allowlist decision for
+			// the restricted app wins over both.
+			if allowlistSelected {
+				e.standaloneForward(w, r, appName, startTime, uid)
+				return
+			}
 			e.standaloneBlock(w, r, reason, appName, startTime)
 			return
 		}
@@ -308,6 +324,16 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 			}
 			elapsed := time.Since(startTime).Milliseconds()
 			e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), false, r.Question[0].Qtype, elapsed, appName, resolvedIPs, "", "", true)
+			// Cache hits must also refresh the per-UID IP authorization:
+			// otherwise full-block apps (默认拦截全部外联) lose connectivity
+			// once their DNS TTLs expire — the network layer rejects any
+			// connection whose IP was never (re-)authorized.
+			if !isNegative {
+				var cachedMsg dns.Msg
+				if cachedMsg.Unpack(cachedResp) == nil {
+					e.rememberAppAllowlistResponse(uid, &cachedMsg)
+				}
+			}
 			return
 		}
 
@@ -327,6 +353,15 @@ func (e *Engine) standaloneForward(w dns.ResponseWriter, r *dns.Msg, appName str
 				}
 				elapsed := time.Since(startTime).Milliseconds()
 				e.notifyLog(strings.TrimSuffix(r.Question[0].Name, "."), false, r.Question[0].Qtype, elapsed, appName, staleCandidate.resolvedIPs, "", "", true)
+
+				// Stale-fallback responses authorize the same resolved IPs
+				// for restricted UIDs (see the cache-hit path above).
+				if !staleCandidate.isNegative {
+					var staleMsg dns.Msg
+					if staleMsg.Unpack(staleResp) == nil {
+						e.rememberAppAllowlistResponse(uid, &staleMsg)
+					}
+				}
 
 				go func() {
 					rawCopy := make([]byte, len(raw))
