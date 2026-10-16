@@ -350,6 +350,9 @@ class WhitelistViewModel(
                             RuleScope.DNS,
                             dataset = dataset
                         )
+                        // Global whitelist rules are merged into every full-block
+                        // app's network allowlist; rebuild it on change.
+                        RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(getApplication())
                     }
                 }
                 WhitelistType.URL -> {
@@ -378,6 +381,7 @@ class WhitelistViewModel(
                             RuleScope.DNS,
                             dataset = dataset
                         )
+                        RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(getApplication())
                     }
                 }
                 WhitelistType.URL -> {
@@ -471,6 +475,7 @@ class WhitelistViewModel(
         if (inserted) {
             allowListManager.syncCachedPattern(entity.pattern)
             syncDnsAndPassthrough()
+            RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(getApplication())
             refreshAll()
             Result.success("已添加域名白名单规则")
         } else {
@@ -544,6 +549,7 @@ class WhitelistViewModel(
             }
             allowListManager.syncCachedPattern(entity.pattern)
             syncDnsAndPassthrough()
+            RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(getApplication())
             refreshAll()
             Result.success("域名规则已修改")
         }
@@ -556,6 +562,7 @@ class WhitelistViewModel(
                 DefaultWhitelistSeeder.seed(getApplication(), AppDatabase.getInstance(getApplication()), forceReset = true)
             }
             syncDnsAndPassthrough()
+            RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(getApplication())
             refreshAll()
         }
     }
@@ -569,6 +576,7 @@ class WhitelistViewModel(
                 CosmeticRuleManager.getInstance(getApplication()).compileAllToCss()
             }
             syncDnsAndPassthrough()
+            RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(getApplication())
             syncUrlRules()
             refreshAll()
         }

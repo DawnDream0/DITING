@@ -420,6 +420,9 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
                 if (added) {
                     val parsed = AdGuardRuleParser.parseAllowLine(ruleString)
                     RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, "allow", parsed?.pattern ?: cleanPattern, scope)
+                    // The app's network allowlist merges this rule; rebuild it so
+                    // the newly allowed domain takes effect immediately.
+                    RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)
                 }
                 added
             } else {
@@ -450,6 +453,7 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
                 val pattern = allowListManager.toggleRule(id, enabled)
                 if (pattern != null) {
                     RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, "allow", pattern, scope)
+                    RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)
                 }
             } else {
                 val pattern = blockListManager.toggleRule(id, enabled)
@@ -489,6 +493,7 @@ internal class AppRuleViewModel(application: Application) : AndroidViewModel(app
                 val pattern = allowListManager.deleteRule(id)
                 if (pattern != null) {
                     RuntimeDnsSettingsRefresher.syncRuleIfRunning(context, "allow", pattern, scope)
+                    RuntimeDnsSettingsRefresher.refreshAppAllowlistIfRunning(context)
                 }
             } else {
                 val pattern = blockListManager.deleteRule(id)

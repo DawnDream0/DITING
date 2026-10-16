@@ -283,6 +283,20 @@ interface AllowRuleDao {
     )
     suspend fun allByAppScope(appScope: String): List<AllowRuleEntity>
 
+    /**
+     * Enabled global (non app-scoped) allow rules. Global DNS whitelist rules
+     * (added in the whitelist tab or imported from subscriptions without an
+     * `$app=` modifier) have an empty/NULL appScope; they are merged into every
+     * full-block app's network allowlist so whitelisted domains stay reachable
+     * for apps under default-deny isolation.
+     */
+    @Query(
+        "SELECT r.pattern FROM allow_rule r WHERE " +
+            "(r.appScope IS NULL OR r.appScope = '') AND r.appInverted = 0 AND r.enabled = 1 " +
+            "AND EXISTS (SELECT 1 FROM allow_rule_source s WHERE s.ruleId = r.id AND s.enabled = 1)"
+    )
+    suspend fun enabledGlobalPatterns(): List<String>
+
     @Query(
         "SELECT r.id, r.pattern, r.rawLine, r.addedAt, " +
             "(r.enabled = 1 AND EXISTS (SELECT 1 FROM allow_rule_source s WHERE s.ruleId = r.id AND s.enabled = 1)) AS enabled, " +

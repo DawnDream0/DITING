@@ -234,6 +234,11 @@ class DnsVpnRuntimeConfigManager(
             val db = com.haoze.diting.data.AppDatabase.getInstance(context)
             val blockDao = db.blockRuleDao()
             val allowDao = db.allowRuleDao()
+            // Global DNS whitelist rules (appScope empty, e.g. whitelist-tab
+            // additions and subscription imports without `$app=`) apply to every
+            // full-block app: whitelisted domains must stay reachable under
+            // default-deny isolation.
+            val globalAllow = allowDao.enabledGlobalPatterns().toSet()
             // Find every app that has an enabled full-block rule (`*$app=pkg`).
             // appScope can be "pkg" or a "pkg1|pkg2" combination, with an optional
             // "~" prefix meaning inverted, so split and normalize before probing.
@@ -257,7 +262,7 @@ class DnsVpnRuntimeConfigManager(
                     .filter { it.enabled }
                     .map { it.pattern }
                     .toSet()
-                merged[pkg] = manual + dnsAllow
+                merged[pkg] = manual + dnsAllow + globalAllow
             }
             // Master switch OFF: manual-only apps (no full-block rule) must not
             // be isolated. Full-block apps remain regardless of the switch.
