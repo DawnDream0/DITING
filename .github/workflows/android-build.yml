@@ -54,7 +54,9 @@ jobs:
           export PATH="$PATH:$(go env GOPATH)/bin"
           go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
           gomobile init
-          gomobile bind -target=android/arm64 -androidapi=24 -o ../app/libs/tunnel.aar .
+          # -ldflags "-s -w" strips DWARF/symbol tables so the generated
+          # shared library stays close to the prebuilt AAR's size.
+          gomobile bind -target=android/arm64 -androidapi=24 -ldflags="-s -w" -o ../app/libs/tunnel.aar .
 
       - name: Generate CI release signing keystore
         # Release builds require a keystore (see build.gradle.kts signing config,

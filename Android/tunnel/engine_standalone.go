@@ -42,6 +42,11 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 	// whitelisted domain fall through to global subscription blocks and the app
 	// loses all connectivity.
 	allowlistSelected := e.appAllowlistSelected(uid)
+	// Android apps commonly resolve DNS through the system netd dispatcher, so
+	// the query UID seen here is a system/root UID, not the app's. In that case
+	// the domain still belongs to some restricted app's allowlist, so the
+	// query-level hit must drive the exemption below.
+	allowlistQueryHit := e.appAllowlistQueryAllowed(domain)
 	if !e.appAllowlistDomainAllowed(uid, domain) {
 		e.standaloneBlock(w, r, "app_allowlist", appOverride, startTime)
 		return
@@ -155,11 +160,12 @@ func (e *Engine) serveDNS(w dns.ResponseWriter, r *dns.Msg, appOverride string, 
 	if e.policyEngine != nil && e.policyEngine.isActive() && e.policyEngine.hasRules() {
 		blocked, reason := e.policyEngine.evaluate(domain, appName, queryType)
 		if blocked {
-			// The domain already passed the UID-level allowlist gate above.
-			// A block at this stage is either a per-app block rule or a
-			// global subscription rule; the explicit allowlist decision for
-			// the restricted app wins over both.
-			if allowlistSelected {
+			// The domain already passed the UID-level allowlist gate above
+			// (or matches some restricted app's allowlist when the query was
+			// proxied by the system dispatcher). A block at this stage is
+			// either a per-app block rule or a global subscription rule; the
+			// explicit allowlist decision for the restricted app wins.
+			if allowlistSelected || allowlistQueryHit {
 				e.standaloneForward(w, r, appName, startTime, uid)
 				return
 			}

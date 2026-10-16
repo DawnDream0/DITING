@@ -149,6 +149,24 @@ func (e *Engine) appAllowlistSelected(uid int) bool {
 	return selected || hasWc
 }
 
+// appAllowlistQueryAllowed reports whether the queried domain matches the
+// allowlist of ANY restricted UID. Android apps frequently resolve DNS via
+// the system netd dispatcher, so the DNS query seen by the engine carries a
+// system/root UID rather than the app's UID. Those proxied queries must be
+// treated as belonging to the restricted app whose allowlist matched the
+// name — otherwise per-app allow rules never fire and the whitelisted domain
+// falls through to global subscription blocks.
+func (e *Engine) appAllowlistQueryAllowed(domain string) bool {
+	e.appAllowlist.mu.RLock()
+	defer e.appAllowlist.mu.RUnlock()
+	for targetUID, allowed := range e.appAllowlist.domains {
+		if domainMatches(allowed, e.appAllowlist.wildcards[targetUID], domain) {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) appAllowlistConnectionAllowed(uid int, ip net.IP) bool {
 	if ip.IsLoopback() {
 		return true
